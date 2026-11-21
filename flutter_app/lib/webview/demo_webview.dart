@@ -1,11 +1,12 @@
 // DemoWebView：所有修正都打開的參考包裝（設計文件 §5、§5.2 基準原則）。
 //
 // 目前接上的部分：
-// - JavaScript 開啟；用 onPageStarted／onUrlChange 追蹤目前的頂層網址。
-// - A11yBridge 頻道：只有目前頂層網址屬於自家網頁時才處理訊息（§6.3 信任範圍）。
-// - 收到 ready 後送一次設定；之後系統設定或 App 主題改變時再送（§6.2）。
-// - 字級的責任歸屬（§6.1）。
-// 其餘旗標（返回、載入與錯誤、JS 對話框、外部連結、縮放）之後再接；在那之前，這些方面維持外掛的預設行為。
+// - JavaScript 開啟。
+// - 頂層網址分成「已換上」與「載入中」、A11yBridge 的信任範圍、ready 握手與設定的傳送、reportReady 補送、
+//   字級的責任歸屬（§6.1–§6.3）。這些決策都在 DemoWebViewLogic（純 Dart，有單元測試），
+//   這裡只把 WebView 的回呼與 App 發起的載入交給它，再照順序執行它回傳的 WebViewEffect。
+// - onWebResourceError 只用來結束載入中狀態，不顯示錯誤畫面。
+// 其餘旗標（返回、載入與錯誤的畫面、JS 對話框、外部連結、縮放）之後再接；在那之前，這些方面維持外掛的預設行為。
 //
 // 朗讀（§6.4）：這裡不朗讀任何東西。網頁回報的標題只寫進 DemoWebController.webTitle，
 // 由示範頁安靜地更新 AppBar；基準不主動朗讀頁面標題，否則每一頁的焦點移動都會被念兩次。
@@ -14,6 +15,7 @@
 // 不在 initState、didChangeDependencies、didUpdateWidget 或 build 裡改。
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -22,6 +24,7 @@ import '../contract/bridge_message.dart';
 import '../contract/web_contract.dart';
 import 'demo_web_controller.dart';
 import 'demo_webview_config.dart';
+import 'demo_webview_logic.dart';
 import 'platform_webview.dart';
 
 /// 網頁 → App 的 JS 頻道名稱（約定，一字不改）。
@@ -51,43 +54,6 @@ WebSettingsSnapshot snapshotOf(BuildContext context, DemoWebViewConfig config) {
         ? MediaQuery.disableAnimationsOf(context) || View.of(context).platformDispatcher.accessibilityFeatures.reduceMotion
         : null,
   );
-}
-
-/// 某個字級策略在兩個平台上分別要做的事（設計文件 §6.1 的表）。null 表示這個平台不做事。
-@immutable
-class TextScaleAction {
-  const TextScaleAction({this.androidTextZoom, this.iosTextSizeAdjust});
-
-  /// Android `setTextZoom` 的百分比。
-  final int? androidTextZoom;
-
-  /// iOS 注入的 `-webkit-text-size-adjust` 百分比。
-  final int? iosTextSizeAdjust;
-
-  @override
-  bool operator ==(Object other) =>
-      other is TextScaleAction && other.androidTextZoom == androidTextZoom && other.iosTextSizeAdjust == iosTextSizeAdjust;
-
-  @override
-  int get hashCode => Object.hash(androidTextZoom, iosTextSizeAdjust);
-
-  @override
-  String toString() => 'TextScaleAction(android: $androidTextZoom, ios: $iosTextSizeAdjust)';
-}
-
-/// 實際採用的策略 [effective]（已經過 [effectiveTextScaleStrategy]）與 App 字級倍率 [appTextScale] 對應的動作。
-///
-/// - 網頁負責：Android `setTextZoom(100)`，關掉 WebView 建立時自動套用的系統字級，避免和網頁的根字級重複放大；
-///   iOS 不做事（WKWebView 本來就不跟系統字級）。
-/// - App 負責：兩個平台都放大到倍率×100。
-/// - 都不做：兩個平台都不動，Android 維持 WebView 建立時自動套用的系統字級。
-TextScaleAction textScaleActionFor(TextScaleStrategy effective, double appTextScale) {
-  final percent = (appTextScale * 100).round();
-  return switch (effective) {
-    TextScaleStrategy.none => const TextScaleAction(),
-    TextScaleStrategy.webOwned => const TextScaleAction(androidTextZoom: 100),
-    TextScaleStrategy.appOwned => TextScaleAction(androidTextZoom: percent, iosTextSizeAdjust: percent),
-  };
 }
 
 /// 示範頁用的 WebView。
@@ -123,29 +89,47 @@ class DemoWebView extends StatefulWidget {
   State<DemoWebView> createState() => _DemoWebViewState();
 }
 
+/// 在 App 自己發起載入（loadRequest、reload）之前先通知 DemoWebView。
+///
+/// iOS 第一次載入時 onUrlChange 可能比 onPageStarted 早好幾秒，所以 App 發起的載入要在呼叫時就記為載入中
+/// （設計文件 §6.3）。DemoWebController 的 reload()、loadUri() 也經過這裡，不必改它的介面。
+class _AppLoadTrackingController extends WebViewController {
+  _AppLoadTrackingController() : super();
+
+  /// [target] 為 null 表示重新載入目前的頁面。
+  Future<void> Function(Uri? target)? beforeAppLoad;
+
+  @override
+  Future<void> loadRequest(
+    Uri uri, {
+    LoadRequestMethod method = LoadRequestMethod.get,
+    Map<String, String> headers = const <String, String>{},
+    Uint8List? body,
+  }) async {
+    await beforeAppLoad?.call(uri);
+    return super.loadRequest(uri, method: method, headers: headers, body: body);
+  }
+
+  @override
+  Future<void> reload() async {
+    await beforeAppLoad?.call(null);
+    return super.reload();
+  }
+}
+
 class _DemoWebViewState extends State<DemoWebView> with WidgetsBindingObserver {
-  final WebViewController _webView = WebViewController();
+  final _AppLoadTrackingController _webView = _AppLoadTrackingController();
 
   // 在 initState 固定下來（見 DemoWebView 的說明）。
   late final DemoWebController _web;
   late final Uri _webBase;
   late final bool _hybridComposition;
 
-  /// 目前的頂層網址。載入前先當作要載入的網址，第一次的字級策略和信任判斷才有依據。
-  Uri? _topUrl;
-
-  /// 這一頁（最近一次 onPageStarted 之後）的網頁送過 ready 了沒。送過之後設定改變才通知網頁。
-  bool _readyOnThisPage = false;
+  /// 第一次 didChangeDependencies 時建立（要讀 MediaQuery 算設定）。
+  late final DemoWebViewLogic _logic;
 
   bool _started = false;
   bool _disposed = false;
-
-  /// 最近一次算出的設定與 App 字級倍率。
-  late WebSettingsSnapshot _snapshot;
-  late double _appTextScale;
-
-  /// 最近一次對 Android 呼叫 setTextZoom 的值。文字縮放是整個 WebView 的設定，換頁後仍然有效，同樣的值不重送。
-  int? _appliedAndroidTextZoom;
 
   @override
   void initState() {
@@ -153,7 +137,7 @@ class _DemoWebViewState extends State<DemoWebView> with WidgetsBindingObserver {
     _web = widget.controller;
     _webBase = widget.webBase;
     _hybridComposition = widget.hybridComposition;
-    _topUrl = widget.uri;
+    _webView.beforeAppLoad = _onAppLoad;
     WidgetsBinding.instance.addObserver(this);
     _web.attach(_webView);
   }
@@ -163,8 +147,12 @@ class _DemoWebViewState extends State<DemoWebView> with WidgetsBindingObserver {
     super.didChangeDependencies();
     if (!_started) {
       _started = true;
-      _snapshot = snapshotOf(context, widget.config);
-      _appTextScale = appTextScaleOf(context);
+      _logic = DemoWebViewLogic(
+        webBase: _webBase,
+        textScale: widget.config.textScale,
+        snapshot: snapshotOf(context, widget.config),
+        appTextScale: appTextScaleOf(context),
+      );
       _bestEffort(_start());
     } else {
       _syncSettings();
@@ -191,6 +179,7 @@ class _DemoWebViewState extends State<DemoWebView> with WidgetsBindingObserver {
   @override
   void dispose() {
     _disposed = true;
+    _webView.beforeAppLoad = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -201,48 +190,50 @@ class _DemoWebViewState extends State<DemoWebView> with WidgetsBindingObserver {
       onPageStarted: _onPageStarted,
       onPageFinished: _onPageFinished,
       onUrlChange: _onUrlChange,
+      onWebResourceError: _onWebResourceError,
     ));
     await _webView.addJavaScriptChannel(kBridgeChannelName, onMessageReceived: _onBridgeMessage);
-    // 先套用字級再載入：Android「網頁負責」要先關掉 WebView 自己的放大，第一次畫面才不會被放大兩次。
-    await _applyTextScale(injectIos: false);
     if (_disposed) return;
+    // 經過 _onAppLoad：先記為載入中並套用 Android 的字級，再載入，第一次畫面才不會被放大兩次。
     await _webView.loadRequest(widget.uri);
   }
 
-  // ── WebView 的回呼 ────────────────────────────────────────────────
+  // ── WebView 的回呼與 App 發起的載入 ───────────────────────────────
+
+  Future<void> _onAppLoad(Uri? target) async {
+    if (_disposed) return;
+    await _apply(_logic.appLoadStarted(target));
+  }
 
   void _onPageStarted(String url) {
     if (_disposed) return;
-    _readyOnThisPage = false;
-    _setTopUrl(url);
+    _bestEffort(_apply(_logic.pageStarted(url)));
     _web.loading = true;
   }
 
   void _onUrlChange(UrlChange change) {
     if (_disposed) return;
-    final url = change.url;
-    if (url != null) _setTopUrl(url);
+    _bestEffort(_apply(_logic.urlChanged(change.url)));
   }
 
   void _onPageFinished(String url) {
     if (_disposed) return;
+    _bestEffort(_apply(_logic.pageFinished(url)));
     _web.loading = false;
-    // iOS 的 -webkit-text-size-adjust 只作用在目前這份文件，載入完成後再注入一次。
-    _bestEffort(_applyTextScale(injectIos: true));
   }
 
-  void _setTopUrl(String url) {
-    _topUrl = Uri.tryParse(url);
-    // 每次頂層網址改變都重算策略：導到其他網域時「網頁負責」改成「App 負責」（§6.1）。
-    _bestEffort(_applyTextScale(injectIos: true));
+  void _onWebResourceError(WebResourceError error) {
+    if (_disposed) return;
+    // 只處理主框架的錯誤；平台沒有提供這個資訊（null）時當成主框架。這個任務只用它結束載入中，不顯示錯誤畫面。
+    if (!(error.isForMainFrame ?? true)) return;
+    _bestEffort(_apply(_logic.mainFrameError()));
+    _web.loading = false;
   }
-
-  bool get _onTrustedPage => isTrustedPage(_topUrl, _webBase);
 
   void _onBridgeMessage(JavaScriptMessage raw) {
     if (_disposed) return;
-    // §6.3 信任範圍：頻道會注入到頁面裡所有的 frame（包括 iframe），只在目前頂層網址屬於自家網頁時才處理。
-    if (!_onTrustedPage) return;
+    // §6.3 信任範圍：頻道會注入到頁面裡所有的 frame（包括 iframe），只在目前屬於自家網頁時才處理（判斷見 DemoWebViewLogic）。
+    if (!_logic.acceptsMessages) return;
     final message = BridgeMessage.parse(raw.message);
     if (message == null) return;
     switch (message) {
@@ -250,8 +241,7 @@ class _DemoWebViewState extends State<DemoWebView> with WidgetsBindingObserver {
         _web.webTitle = title;
         _web.webContract = contract;
         _web.webCaps = caps;
-        _readyOnThisPage = true;
-        _sendSettings();
+        _bestEffort(_apply(_logic.readyAccepted()));
       case RouteChangedMessage(:final title):
         _web.webTitle = title;
       default:
@@ -262,45 +252,35 @@ class _DemoWebViewState extends State<DemoWebView> with WidgetsBindingObserver {
 
   // ── 設定與字級 ────────────────────────────────────────────────────
 
-  /// MediaQuery、主題、語系或輔助設定改變後，重算設定與字級；有變才通知網頁或重新套用字級。
+  /// MediaQuery、主題、語系或輔助設定改變後，把新的設定與字級交給決策；有變才通知網頁或重新套用字級。
   void _syncSettings() {
     if (!_started || _disposed) return;
-    final scale = appTextScaleOf(context);
-    if (scale != _appTextScale) {
-      _appTextScale = scale;
-      // 「App 負責」的倍率不在 snapshot 裡（textScale 是 null），要另外比較。
-      _bestEffort(_applyTextScale(injectIos: true));
-    }
-    final snapshot = snapshotOf(context, widget.config);
-    if (snapshot != _snapshot) {
-      _snapshot = snapshot;
-      if (_readyOnThisPage && _onTrustedPage) _sendSettings();
+    _bestEffort(_apply(_logic.settingsChanged(snapshotOf(context, widget.config), appTextScaleOf(context))));
+  }
+
+  /// 照順序執行決策回傳的效果。每一項都是盡力而為：網頁換頁中或 WebView 已經關閉時，原生端可能拒絕，
+  /// 失敗只記錄下來，不影響後面的項目，也不變成未處理的例外。
+  Future<void> _apply(List<WebViewEffect> effects) async {
+    for (final effect in effects) {
+      try {
+        switch (effect) {
+          case SetAndroidTextZoom(:final percent):
+            await applyAndroidTextZoom(_webView, percent);
+          case SetIosTextSizeAdjust(:final percent):
+            await applyIosTextSizeAdjust(_webView, percent);
+          case ClearIosTextSizeAdjust():
+            await clearIosTextSizeAdjust(_webView);
+          case SendSettings(:final snapshot):
+            await _webView.runJavaScript(updateSettingsScript(snapshot));
+          case RequestReportReady():
+            await _webView.runJavaScript(jsCall('reportReady'));
+        }
+      } catch (error) {
+        debugPrint('DemoWebView：$effect 失敗：$error');
+      }
     }
   }
 
-  void _sendSettings() {
-    _bestEffort(_webView.runJavaScript(updateSettingsScript(_snapshot)));
-  }
-
-  /// 依目前的頂層網址與 App 字級倍率套用字級策略。
-  ///
-  /// [injectIos] 為 false 時不注入 iOS 的 -webkit-text-size-adjust（還沒有文件可以注入）。
-  Future<void> _applyTextScale({required bool injectIos}) async {
-    final effective = effectiveTextScaleStrategy(widget.config.textScale, trustedPage: _onTrustedPage);
-    final action = textScaleActionFor(effective, _appTextScale);
-    final zoom = action.androidTextZoom;
-    if (zoom != null && zoom != _appliedAndroidTextZoom) {
-      _appliedAndroidTextZoom = zoom;
-      await applyAndroidTextZoom(_webView, zoom);
-    }
-    final adjust = action.iosTextSizeAdjust;
-    if (injectIos && adjust != null) {
-      await applyIosTextSizeAdjust(_webView, adjust);
-    }
-  }
-
-  /// 對 WebView 的呼叫都是盡力而為：網頁換頁中或 WebView 已經關閉時，原生端可能拒絕。
-  /// 失敗只記錄下來，不讓它變成未處理的例外。
   void _bestEffort(Future<void> future) {
     unawaited(future.catchError((Object error) {
       debugPrint('DemoWebView：$error');

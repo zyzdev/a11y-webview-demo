@@ -67,6 +67,15 @@ class FakeWebViewController extends PlatformWebViewController {
   void pageFinished(String url) => delegate!.onPageFinished!(url);
   void urlChanged(String? url) => delegate!.onUrlChange!(UrlChange(url: url));
 
+  /// 模擬 onWebResourceError。iOS 的外掛一律回報 isForMainFrame: true。
+  void webResourceError({int errorCode = -999, bool? isForMainFrame = true, String? url}) =>
+      delegate!.onWebResourceError!(WebResourceError(
+        errorCode: errorCode,
+        description: 'fake',
+        isForMainFrame: isForMainFrame,
+        url: url,
+      ));
+
   /// 模擬網頁呼叫 `A11yBridge.postMessage(message)`。
   void postMessage(String message) => channels['A11yBridge']!.onMessageReceived(JavaScriptMessage(message: message));
 }
@@ -77,6 +86,7 @@ class FakeNavigationDelegate extends PlatformNavigationDelegate {
   PageEventCallback? onPageStarted;
   PageEventCallback? onPageFinished;
   UrlChangeCallback? onUrlChange;
+  WebResourceErrorCallback? onWebResourceError;
 
   @override
   Future<void> setOnPageStarted(PageEventCallback onPageStarted) async => this.onPageStarted = onPageStarted;
@@ -86,6 +96,10 @@ class FakeNavigationDelegate extends PlatformNavigationDelegate {
 
   @override
   Future<void> setOnUrlChange(UrlChangeCallback onUrlChange) async => this.onUrlChange = onUrlChange;
+
+  @override
+  Future<void> setOnWebResourceError(WebResourceErrorCallback onWebResourceError) async =>
+      this.onWebResourceError = onWebResourceError;
 }
 
 class FakeWebViewWidget extends PlatformWebViewWidget {

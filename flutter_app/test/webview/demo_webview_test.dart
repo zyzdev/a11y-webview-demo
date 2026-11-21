@@ -141,6 +141,7 @@ void main() {
     expect(c.settingsScripts, isEmpty, reason: '網頁還沒送 ready');
 
     c.postMessage(_ready);
+    c.pageFinished(_page.toString());
     await tester.pump();
     expect(_snapshotNow(tester).textScale, 1.5);
     expect(c.settingsScripts, [updateSettingsScript(_snapshotNow(tester))]);
@@ -171,6 +172,7 @@ void main() {
     final c = platform.last;
     c.pageStarted(_page.toString());
     c.postMessage(_ready);
+    c.pageFinished(_page.toString());
     await tester.pump();
     expect(c.settingsScripts.single, contains('"theme":"light"'));
 
@@ -187,6 +189,7 @@ void main() {
     final c = platform.last;
     c.pageStarted(_page.toString());
     c.postMessage(_ready);
+    c.pageFinished(_page.toString());
     await tester.pump();
     expect(c.settingsScripts.single, contains('"reduceMotion":false'));
 
@@ -225,22 +228,142 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  group('textScaleActionFor：各策略在兩個平台要做的事（§6.1）', () {
-    test('都不做：兩個平台都不動', () {
-      expect(textScaleActionFor(TextScaleStrategy.none, 1.5), const TextScaleAction());
-    });
-    test('網頁負責：Android setTextZoom(100)，iOS 不做事', () {
-      expect(textScaleActionFor(TextScaleStrategy.webOwned, 1.5), const TextScaleAction(androidTextZoom: 100));
-    });
-    test('App 負責：兩個平台都是倍率×100', () {
-      expect(
-        textScaleActionFor(TextScaleStrategy.appOwned, 1.5),
-        const TextScaleAction(androidTextZoom: 150, iosTextSizeAdjust: 150),
-      );
-      expect(
-        textScaleActionFor(TextScaleStrategy.appOwned, 1.15),
-        const TextScaleAction(androidTextZoom: 115, iosTextSizeAdjust: 115),
-      );
-    });
+  // ── 已換上／載入中（設計文件 §6.3），用 iOS 的回呼時序 ──────────────────
+
+  /// 第一次載入自家頁面並換上。
+  Future<FakeWebViewController> loadSelf(WidgetTester tester) async {
+    await tester.pumpWidget(_host(web));
+    await tester.pump();
+    final c = platform.last;
+    c.urlChanged(_page.toString()); // iOS：第一次載入時 onUrlChange 先到
+    c.pageStarted(_page.toString());
+    c.postMessage(_ready);
+    c.pageFinished(_page.toString());
+    await tester.pump();
+    expect(web.webTitle, '字體大小示範');
+    return c;
+  }
+
+  const ext = 'http://127.0.0.1:8766/evil.html';
+  const selfSlow = 'http://127.0.0.1:8123/pages/c01-text-scale.html?mode=fixed&embedded=1&__delay=7000';
+  const fakeReady = '{"type":"ready","title":"假標題","lang":"zh-TW","contract":1,"caps":[]}';
+
+  testWidgets('iOS 時序：外部頁在自家頁載入中送的假 ready 一律被擋，標題不變；載入完成後請網頁補送 reportReady', (tester) async {
+    final c = await loadSelf(tester);
+    c.pageStarted(ext);
+    c.urlChanged(ext);
+    c.pageFinished(ext);
+    await tester.pump();
+    final scriptsBefore = c.scripts.length;
+
+    // 外部頁導向自家慢速頁：iOS 在 onPageStarted／onUrlChange 時就回報自家網址，但畫面上還是外部頁。
+    c.pageStarted(selfSlow);
+    c.urlChanged(selfSlow);
+    for (var i = 0; i < 24; i++) {
+      c.postMessage(fakeReady);
+    }
+    await tester.pump();
+    expect(web.webTitle, '字體大小示範', reason: '假 ready 不能改掉標題');
+    expect(c.scripts.length, scriptsBefore, reason: '假 ready 不能觸發 updateSettings');
+
+    c.pageFinished(selfSlow);
+    await tester.pump();
+    expect(c.scripts.last, jsCall('reportReady'));
+
+    c.postMessage(_ready);
+    await tester.pump();
+    expect(c.settingsScripts.last, updateSettingsScript(_snapshotNow(tester)));
+  });
+
+  testWidgets('自家頁導向 204：載入中自家頁的訊息被擋；變回原網址並收到錯誤後恢復接受、loading 回到 false、改字級仍送設定',
+      (tester) async {
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final c = await loadSelf(tester);
+    const route = '{"type":"routeChanged","title":"自家頁送的標題","path":"/pages/c01-text-scale.html"}';
+
+    c.pageStarted('http://127.0.0.1:8766/nocontent');
+    c.urlChanged('http://127.0.0.1:8766/nocontent');
+    expect(web.loading, isTrue);
+    c.postMessage(route);
+    await tester.pump();
+    expect(web.webTitle, '字體大小示範', reason: '載入中兩個網址都要屬於自家');
+
+    c.urlChanged(_page.toString()); // 變回原網址
+    c.webResourceError(errorCode: 102); // 頁框載入中斷
+    await tester.pump();
+    expect(web.loading, isFalse);
+    c.postMessage(route);
+    await tester.pump();
+    expect(web.webTitle, '自家頁送的標題');
+
+    final before = c.settingsScripts.length;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    await tester.pump();
+    expect(c.settingsScripts.length, before + 1);
+    expect(c.settingsScripts.last, contains('"textScale":1.5'));
+  });
+
+  testWidgets('Android 導向 204：只收到 onPageFinished，畫面仍是自家頁 → 自家頁的訊息照常接受、不補送', (tester) async {
+    final c = await loadSelf(tester);
+    final scriptsBefore = c.scripts.length;
+    c.pageFinished('http://127.0.0.1:8766/nocontent');
+    c.postMessage('{"type":"routeChanged","title":"204後自家","path":"/pages/c01-text-scale.html"}');
+    await tester.pump();
+    expect(web.webTitle, '204後自家');
+    expect(web.loading, isFalse);
+    expect(c.scripts.length, scriptsBefore, reason: '不送 reportReady');
+  });
+
+  testWidgets('App 發起的 loadUri 打到 204（只收到 onPageFinished）：結束載入中、原本的頁面恢復被接受', (tester) async {
+    final c = await loadSelf(tester);
+    await web.loadUri(Uri.parse('http://127.0.0.1:8766/nocontent'));
+    c.pageFinished('http://127.0.0.1:8766/nocontent');
+    c.postMessage('{"type":"routeChanged","title":"仍是自家頁","path":"/pages/c01-text-scale.html"}');
+    await tester.pump();
+    expect(web.webTitle, '仍是自家頁');
+    expect(c.scripts, isNot(contains(jsCall('reportReady'))));
+  });
+
+  testWidgets('window.stop()：外部頁換上後只有錯誤回呼、網址沒變回去 → 外部頁的訊息被擋', (tester) async {
+    final c = await loadSelf(tester);
+    c.pageStarted(ext);
+    c.urlChanged(ext);
+    c.webResourceError(errorCode: -999);
+    c.postMessage('{"type":"routeChanged","title":"停止頁假標題","path":"/x"}');
+    await tester.pump();
+    expect(web.webTitle, '字體大小示範');
+    expect(web.loading, isFalse);
+  });
+
+  testWidgets('isForMainFrame 為 false 的錯誤不結束載入中；為 null 時當成主框架', (tester) async {
+    final c = await loadSelf(tester);
+    c.pageStarted(ext);
+    c.urlChanged(_page.toString());
+    c.webResourceError(isForMainFrame: false);
+    await tester.pump();
+    expect(web.loading, isTrue);
+    c.webResourceError(isForMainFrame: null);
+    await tester.pump();
+    expect(web.loading, isFalse);
+  });
+
+  testWidgets('App 發起的 loadUri 在呼叫時就記為載入中：外部網址載入中，自家頁的訊息被擋', (tester) async {
+    final c = await loadSelf(tester);
+    await web.loadUri(Uri.parse(ext));
+    await tester.pump();
+    expect(c.loadedUris.last, Uri.parse(ext));
+    c.postMessage('{"type":"routeChanged","title":"載入中的訊息","path":"/x"}');
+    await tester.pump();
+    expect(web.webTitle, '字體大小示範');
+  });
+
+  testWidgets('App 發起的 reload 記為載入中：重新載入完成時沒收到 ready 就請網頁補送', (tester) async {
+    final c = await loadSelf(tester);
+    await web.reload();
+    expect(c.reloadCount, 1);
+    c.pageStarted(_page.toString());
+    c.pageFinished(_page.toString());
+    await tester.pump();
+    expect(c.scripts.last, jsCall('reportReady'));
   });
 }

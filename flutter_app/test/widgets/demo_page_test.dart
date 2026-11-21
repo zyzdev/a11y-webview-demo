@@ -166,6 +166,34 @@ void main() {
       expect(appBarTitle(tester), '字體大小');
     });
 
+    testWidgets('iOS 時序：外部頁在自家頁載入中送的假 ready 不會改掉 AppBar 標題；載入完成後送出 reportReady', (tester) async {
+      await pumpPage(tester, c01TextScale);
+      final c = platform.last;
+      final self = c.loadedUris.single.toString();
+      c.pageStarted(self);
+      c.postMessage(_ready('字體大小示範'));
+      c.pageFinished(self);
+      const ext = 'http://127.0.0.1:8766/evil.html';
+      c.pageStarted(ext);
+      c.urlChanged(ext);
+      c.pageFinished(ext);
+      await tester.pump();
+      expect(appBarTitle(tester), '字體大小示範');
+
+      const slow = 'http://127.0.0.1:8123/pages/c01-text-scale.html?mode=fixed&embedded=1&__delay=7000';
+      c.pageStarted(slow);
+      c.urlChanged(slow);
+      for (var i = 1; i <= 5; i++) {
+        c.postMessage(_ready('假標題$i'));
+      }
+      await tester.pump();
+      expect(appBarTitle(tester), '字體大小示範');
+
+      c.pageFinished(slow);
+      await tester.pump();
+      expect(c.scripts, contains(jsCall('reportReady')));
+    });
+
     testWidgets('點目前的變體不重建 WebView', (tester) async {
       await pumpPage(tester, c01TextScale);
       await tester.tap(chip('問題版'));

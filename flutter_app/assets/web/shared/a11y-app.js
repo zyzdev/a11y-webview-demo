@@ -64,6 +64,8 @@
  * 送給 App 的訊息，各由誰決定要不要送
  *   ready：握手，和任何修正無關。每一頁在 DOMContentLoaded 後由本檔自動送，從 bfcache 回來時再送一次，
  *     問題版也照送。它的 caps 只列目前啟用的修正，App 從這裡知道這一頁關掉了什麼。
+ *     App 也會呼叫 a11yApp.reportReady() 請網頁再送一次：頁面載入完成、屬於自家網域，但 App 還沒收到這一頁的
+ *     ready 時（例如從其他網域導回來，載入過程中送的 ready 依信任範圍被忽略；設計文件 §6.2、§6.3）。
  *   reportRoute：由本檔把關。arrival 被關掉時它什麼都不做，所以各頁可以無條件呼叫。
  *   setBackState、requestClose、postToApp：本身不看修正開關，要不要呼叫由各頁用
  *     a11yApp.fixEnabled() 決定。

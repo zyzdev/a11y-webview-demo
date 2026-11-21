@@ -40,9 +40,20 @@ Future<void> applyAndroidTextZoom(WebViewController c, int percent) async {
 /// iOS：在目前的網頁注入 `document.documentElement.style.webkitTextSizeAdjust`。非 iOS 不做事。
 ///
 /// WKWebView 預設不跟隨 iOS 的動態字級（設計文件 §3 第 1 點），「App 負責」策略用這個方式放大網頁的字。
-/// 它只作用在已經載入的這一份文件，換頁後要重新注入；iPad 上是否有效需實機確認（設計文件 §6.1）。
+/// 它只作用在目前這一份文件，換頁後要重新注入；iPad 上是否有效需實機確認（設計文件 §6.1）。
+/// 呼叫端要確保目前的文件就是要注入的那一頁（載入中不呼叫，見 DemoWebViewLogic）。
 Future<void> applyIosTextSizeAdjust(WebViewController c, int percent) async {
   if (c.platform is WebKitWebViewController) {
     await c.runJavaScript("document.documentElement.style.webkitTextSizeAdjust='$percent%';");
+  }
+}
+
+/// iOS：清掉目前網頁的 `document.documentElement.style.webkitTextSizeAdjust`（設成空字串）。非 iOS 不做事。
+///
+/// 「網頁負責」的自家頁面不應該被 App 放大；萬一這一份文件曾被注入過（例如從 bfcache 還原），清掉才不會和
+/// 網頁的根字級重複放大。
+Future<void> clearIosTextSizeAdjust(WebViewController c) async {
+  if (c.platform is WebKitWebViewController) {
+    await c.runJavaScript("document.documentElement.style.webkitTextSizeAdjust='';");
   }
 }

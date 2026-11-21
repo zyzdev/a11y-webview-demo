@@ -42,7 +42,8 @@ final DemoSpec c01TextScale = DemoSpec(
         '但卡片高度固定，文字被切掉；頁面開著時改系統字級，網頁不會更新。',
     expectFixed: '修正版：兩個平台的字都跟著系統字級變大，卡片不破版；頁面開著時改系統字級，網頁也會跟著更新。'
         '只改 App：字會變大（Android 用 setTextZoom，iOS 注入 -webkit-text-size-adjust），但卡片仍然破版，'
-        '說明網頁還是得配合；在 iPad 上 -webkit-text-size-adjust 可能無效，需實機確認。',
+        '說明網頁還是得配合；頁面開著時改系統字級，網頁也會跟著更新（App 重新套用放大倍率）；'
+        '在 iPad 上 -webkit-text-size-adjust 可能無效，需實機確認。',
     evidence: [
       'Chromium AwSettings.java：Android WebView 建立時套用系統字級，之後不再追蹤；呼叫 setTextZoom 就取代這個自動行為。',
       'WebKit bug 187013：WKWebView 預設不跟隨 iOS 的動態字級。',
@@ -51,8 +52,9 @@ final DemoSpec c01TextScale = DemoSpec(
     codeRefs: [
       'web/pages/c01-text-scale.html（問題版與修正版的樣式）',
       'web/shared/a11y-app.js（rootFontPercent：根字級跟著 textScale）',
-      'flutter_app/lib/webview/demo_webview.dart（snapshotOf、textScaleActionFor）',
-      'flutter_app/lib/webview/platform_webview.dart（applyAndroidTextZoom、applyIosTextSizeAdjust）',
+      'flutter_app/lib/webview/demo_webview.dart（snapshotOf）',
+      'flutter_app/lib/webview/demo_webview_logic.dart（textScaleActionFor：字級套用到哪一頁、什麼時候套用）',
+      'flutter_app/lib/webview/platform_webview.dart（applyAndroidTextZoom、applyIosTextSizeAdjust、clearIosTextSizeAdjust）',
       'flutter_app/lib/webview/demo_webview_config.dart（TextScaleStrategy、effectiveTextScaleStrategy）',
     ],
   ),
