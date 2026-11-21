@@ -131,7 +131,11 @@ class DemoScaffold extends StatelessWidget {
                     if (status != null)
                       ConstrainedBox(
                         constraints: BoxConstraints(maxHeight: topMax / 2),
+                        // primary: false：行動平台上沒指定 controller 的直向捲動區會接上 PrimaryScrollController，
+                        // 控制區已經接了；這裡再接，同一個 controller 會掛兩個捲動位置，
+                        // 外接鍵盤按 PageDown 時 ScrollAction 會丟例外（設計文件 B05）。
                         child: SingleChildScrollView(
+                          primary: false,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           child: status,
                         ),

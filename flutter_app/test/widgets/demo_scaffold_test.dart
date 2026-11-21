@@ -4,6 +4,7 @@ import 'package:a11y_webview_demo/catalog/demo_spec.dart';
 import 'package:a11y_webview_demo/webview/demo_webview_config.dart';
 import 'package:a11y_webview_demo/widgets/demo_scaffold.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 DemoWebViewConfig _baseline(String variantId, Map<String, String> options) => DemoWebViewConfig.baseline;
@@ -289,4 +290,32 @@ void main() {
       });
     }
   });
+
+  // 外接鍵盤（設計文件 B05）：行動平台上沒指定 controller 的直向捲動區會接上 PrimaryScrollController，
+  // 同一個 controller 掛兩個捲動位置時，PageDown 的 ScrollAction 會丟例外。
+  testWidgets('有狀態列、字級 3.0 時按實體鍵盤 PageDown 不丟例外', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(390, 844);
+    tester.platformDispatcher.textScaleFactorTestValue = 3.0;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(MaterialApp(
+      home: DemoScaffold(
+        spec: _spec(),
+        variant: kProblemFixed.first,
+        onVariantChanged: (_) {},
+        title: '網頁標題',
+        titleIsLiveRegion: false,
+        // 讓頁框裡有東西取得焦點，鍵盤事件才會經過 Shortcuts／Actions。
+        body: Focus(autofocus: true, child: const SizedBox.expand()),
+        statusLine: Semantics(liveRegion: true, child: const Text('Flutter 在這個平台不支援 announcement，請用 liveRegion')),
+      ),
+    ));
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus, isNotNull);
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  }, variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}));
 }
