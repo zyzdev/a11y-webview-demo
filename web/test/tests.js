@@ -97,3 +97,16 @@ var full = '?mode=problem&off=routeFocus%2CformFeedback&embedded=1&lang=zh-TW&th
 eq(A11yCore.buildSearch(A11yCore.parseParams(full)), full);
 eq(A11yCore.buildSearch(A11yCore.parseParams('')), '?mode=fixed');
 eq(A11yCore.buildSearch(A11yCore.parseParams('?mode=evil&theme=pink&x=%3Cscript%3E&textScale=1.5')), '?mode=fixed&textScale=1.50');
+
+// --- routeReportAction：reportRoute 這一次該做什麼（三個條件的全部八種組合）---
+// arrival 被關掉：在不在 App 內都不回報。
+eq(A11yCore.routeReportAction({embedded:true,  arrival:false, routeFocus:true}),  'none');
+eq(A11yCore.routeReportAction({embedded:true,  arrival:false, routeFocus:false}), 'none');
+eq(A11yCore.routeReportAction({embedded:false, arrival:false, routeFocus:true}),  'none');
+eq(A11yCore.routeReportAction({embedded:false, arrival:false, routeFocus:false}), 'none');
+// 在 App 內：只送訊息，要不要朗讀由 App 決定。
+eq(A11yCore.routeReportAction({embedded:true,  arrival:true,  routeFocus:true}),  'post');
+eq(A11yCore.routeReportAction({embedded:true,  arrival:true,  routeFocus:false}), 'post');
+// 不在 App 內：焦點會移到新標題時不再重複，沒有移焦點才寫 aria-live。
+eq(A11yCore.routeReportAction({embedded:false, arrival:true,  routeFocus:true}),  'none');
+eq(A11yCore.routeReportAction({embedded:false, arrival:true,  routeFocus:false}), 'announce');

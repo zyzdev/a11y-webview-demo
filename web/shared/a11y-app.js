@@ -54,23 +54,30 @@
  *
  * 修正名稱（data-fixes、off 參數、ready 訊息 caps 共用的詞彙）
  *   由本檔處理：textScale（根字級）、theme（data-theme）、a11yPrefs（pref-* class）、
- *              embeddedChrome 與 embeddedTitle（搭配 base.css 隱藏 header）、arrival（自動送 ready）
+ *              embeddedChrome 與 embeddedTitle（搭配 base.css 隱藏 header）、
+ *              arrival（reportRoute 要不要回報網頁內的換畫面）
  *   由各頁處理：lang、routeFocus、back、zoom、dialogReturn、formErrors、formFeedback、safeArea
  *              （用 a11yApp.fixEnabled('名稱') 或 CSS 的 html.nofix-名稱 判斷）
  *   規則：只有這一頁 data-fixes 列出的修正可以被關掉。mode=problem 關掉列出的全部，off 關掉其中指定的。
  *        沒列在這一頁的修正永遠啟用（基準原則，設計文件 §5.2）。
  *
- * 對 App 送訊息的函式（reportRoute、setBackState、requestClose、postToApp）本身不看修正開關，
- * 要不要呼叫由各頁用 a11yApp.fixEnabled() 決定。唯一的例外是 ready：arrival 啟用時本檔自動送。
+ * 送給 App 的訊息，各由誰決定要不要送
+ *   ready：握手，和任何修正無關。每一頁在 DOMContentLoaded 後由本檔自動送，從 bfcache 回來時再送一次，
+ *     問題版也照送。它的 caps 只列目前啟用的修正，App 從這裡知道這一頁關掉了什麼。
+ *   reportRoute：由本檔把關。arrival 被關掉時它什麼都不做，所以各頁可以無條件呼叫。
+ *   setBackState、requestClose、postToApp：本身不看修正開關，要不要呼叫由各頁用
+ *     a11yApp.fixEnabled() 決定。
  *
  * 朗讀的分工（設計文件 §6.4：一件事只用一種方式讓使用者知道）
  *   網頁內換畫面時，各頁這樣寫：
  *     document.title = 新標題;
- *     if (a11yApp.fixEnabled('arrival')) a11yApp.reportRoute(新標題, 路徑);
+ *     a11yApp.reportRoute(新標題, 路徑);
  *     if (a11yApp.fixEnabled('routeFocus')) 新畫面的標題.focus();   // 標題要有 tabindex="-1"
- *   reportRoute 在 App 內只送訊息，要不要朗讀由 App 決定，網頁不另外朗讀。
- *   不在 App 內時沒有 App 可以朗讀，才改寫進頁面上隱藏的 aria-live 區域；
- *   但 routeFocus 啟用時焦點落點本身就會被念出來，所以這時也不寫，避免同一個標題被念兩次。
+ *   reportRoute 這一次做什麼，由 A11yCore.routeReportAction 決定：
+ *     arrival 被關掉               → 不做事
+ *     在 App 內                    → 只送 routeChanged；要不要朗讀由 App 決定，網頁不另外朗讀
+ *     不在 App 內、routeFocus 啟用 → 不做事；焦點落點本身會被念出來，再寫 aria-live 就念兩次了
+ *     不在 App 內、routeFocus 關閉 → 沒有 App、焦點也沒動，才把標題寫進頁面上隱藏的 aria-live 區域
  *
  * a11yApp.params 一開始是 parseParams(location.search) 的結果；App 之後呼叫 updateSettings 時，
  * 其中的設定欄位（lang、theme、textScale、bold、contrast、reduceMotion）會更新成最新的值。
@@ -183,6 +190,16 @@ var A11yCore = (function () {
     });
   }
 
+  // 網頁內換畫面時，reportRoute 這一次該做什麼（設計文件 §6.4：一件事只用一種方式讓使用者知道）。
+  //   'post'     送 routeChanged 給 App。在 App 內只做這件事，要不要朗讀由 App 決定。
+  //   'announce' 把標題寫進頁面的 aria-live 區域。不在 App 內、焦點又不會移動時才用。
+  //   'none'     不做事。arrival 被關掉；或不在 App 內而 routeFocus 啟用（焦點落點本身會被念出來）。
+  function routeReportAction(input) {
+    if (!input.arrival) return 'none';
+    if (input.embedded) return 'post';
+    return input.routeFocus ? 'none' : 'announce';
+  }
+
   // honorParam 為 true（theme 修正啟用）時，App 傳來的主題優先；否則只看系統的深淺色。
   function effectiveTheme(input) {
     if (input.honorParam && (input.param === 'light' || input.param === 'dark')) return input.param;
@@ -211,6 +228,7 @@ var A11yCore = (function () {
     parseFixList: parseFixList,
     fixEnabled: fixEnabled,
     enabledFixes: enabledFixes,
+    routeReportAction: routeReportAction,
     effectiveTheme: effectiveTheme,
     rootFontPercent: rootFontPercent,
     resolvePref: resolvePref
@@ -326,22 +344,25 @@ if (typeof document !== 'undefined') {
       return routeStatus;
     }
 
-    // 網頁內換畫面。朗讀的分工見檔頭：一件事只用一種方式讓使用者知道。
+    // 網頁內換畫面。該做什麼由 A11yCore.routeReportAction 決定；arrival 被關掉時什麼都不做，
+    // 所以各頁可以無條件呼叫這個函式。
     function reportRoute(title, path) {
       var text = title == null ? '' : String(title);
-      if (params.embedded) {
-        // 在 App 內：只送訊息。App 安靜地更新 AppBar 標題，要不要朗讀由 App 決定。
+      var action = A11yCore.routeReportAction({
+        embedded: params.embedded,
+        arrival: fixEnabled('arrival'),
+        routeFocus: fixEnabled('routeFocus')
+      });
+      if (action === 'post') {
         postToApp({
           type: 'routeChanged',
           title: text,
           path: path == null ? window.location.pathname : String(path)
         });
-        return;
+      } else if (action === 'announce') {
+        var region = ensureRouteStatus();
+        if (region) region.textContent = text;
       }
-      // 不在 App 內：routeFocus 啟用時焦點會移到新標題，由焦點落點被念出來，這裡不再重複。
-      if (fixEnabled('routeFocus')) return;
-      var region = ensureRouteStatus();
-      if (region) region.textContent = text;
     }
 
     function setBackState(canHandleBack) {
@@ -412,7 +433,9 @@ if (typeof document !== 'undefined') {
       warnUnknownFixes();
       addModeSwitch();
       if (!params.embedded) ensureRouteStatus();
-      if (fixEnabled('arrival')) reportReady();
+      // ready 是握手，和任何修正無關：App 要靠它知道這一頁有實作約定、目前啟用哪些修正，
+      // 並在收到後把設定送過來。所以每一頁都送，問題版也一樣。
+      reportReady();
     }
 
     window.a11yApp = {
@@ -443,9 +466,9 @@ if (typeof document !== 'undefined') {
       onDomReady();
     }
 
-    // 從 bfcache 回來時不會再觸發 DOMContentLoaded，App 那邊卻已經換過頁，所以要再報一次。
+    // 從 bfcache 回來時不會再觸發 DOMContentLoaded，App 那邊卻已經換過頁，所以要再握手一次。
     window.addEventListener('pageshow', function (event) {
-      if (event.persisted && fixEnabled('arrival')) reportReady();
+      if (event.persisted) reportReady();
     });
   })();
 }
