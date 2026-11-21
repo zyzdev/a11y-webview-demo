@@ -149,3 +149,65 @@ Task 2 起在第二台電腦上做，協調者是新的 session，依 `docs/HAND
 - Task 4：`AppScope.webBase` 一律以 `/` 結尾（上表第 1 項）。
 - Task 9：決定 `OpenNativeDialogMessage.actions` 的個數上下限（上表第 2 項）。
 - 整體審查：判斷 `buildDemoUri` 要不要自己處理沒有結尾斜線的 base。
+
+## Task 3：內建伺服器、assets 同步、平台設定
+
+| 項目 | 內容 |
+|---|---|
+| 實作 | 全新子代理，Opus 5.5、high。commit `91fddb5`、`9b8b5d5`（後者是實作者自我檢查時發現 `normalizePath('/%ff')` 會丟例外而追加的修正） |
+| 審查 | 獨立代理，Fable 5.2、high。拿到設計文件、計畫與任務編號、commit 範圍 `acbd067..9b8b5d5`，以及下面「派工時補的決定」。沒有拿到實作者的報告 |
+| 審查結論 | 規格符合：是。品質：通過 |
+| 發現數 | 必修 0、應修 1、可之後再做 3 |
+| 修正 | 同一個實作代理。commit `b2f5ab5` |
+| 複查 | 同一個審查代理，範圍 `9b8b5d5..b2f5ab5`。四項都已解決，修正通過；另外指出 1 項可之後再做的測試缺口 |
+
+### 派工時協調者補的決定
+
+| 決定 | 理由 |
+|---|---|
+| 同步腳本排除 `.DS_Store`，assets 同步測試比對時也忽略它 | 沿用 P5 |
+| `tool/sync_web.sh` 要有執行權限，從其他目錄執行也要正確或明確報錯 | 腳本用了 `--delete`，路徑錯了會刪錯東西 |
+| `LocalWebServer.baseUri` 一律以 `/` 結尾 | Task 2 審查的第 1 項 |
+| 新的 intent 加進範本既有的 `<queries>` 區塊 | 範本已經有一個 `<queries>` |
+| 三處明文 HTTP 設定都要有「僅供示範，正式專案不可照抄」的註解 | Global Constraints |
+| 不在模擬器上執行 App；實作者改看合併後的 manifest 與建置後的 `Info.plist` | `main.dart` 到 Task 4 才啟動伺服器 |
+
+### 每一項發現與處理
+
+| # | 等級 | 發現 | 協調者的查證 | 處理 |
+|---|---|---|---|---|
+| 1 | 應修 | 查詢字串含「合法 hex 但不是合法 UTF-8」的 percent-encoding（例如 `?x=%ff`）時，伺服器回 500 而不是照常給檔案 | 讀程式屬實：`request.uri.queryParameters` 解碼失敗的例外被外層的 `catch` 接住。審查者用原始 socket 實測過 | 採納。`b2f5ab5`：讀 `__delay` 失敗時當作沒帶，照常回 200；補了測試 |
+| 2 | 可之後再做 | `normalizePath` 擋「解碼後含 `/`、`\`、NUL」的那一行沒有測試，刪掉它所有測試仍通過 | 屬實：測試檔裡沒有 `%2f`、`%5c`、`%00` 的斷言 | 採納。`b2f5ab5` 補三條斷言；複查時把三個條件各自拿掉，測試都會失敗 |
+| 3 | 可之後再做 | `ensureRunning` 的探測把「任何 HTTP 回應」都當成自己還活著。原埠被別的 HTTP 伺服器佔走時會回傳舊網址 | 讀程式屬實。既有的「原埠被佔」測試用的是 `ServerSocket`，不是 HTTP 伺服器，所以沒測到 | 採納。這不符合計畫寫的「原埠被佔才換埠」，而且舊網址仍會被 `isTrustedPage` 當成自家網域。`b2f5ab5`：每個伺服器實例產生一個隨機值，放在每個回應的 `x-a11y-demo-server` 標頭，探測時比對；補了測試 |
+| 4 | 可之後再做 | `--exclude .DS_Store` 讓目的端既有的 `.DS_Store` 不受 `--delete` 影響，Finder 留在 `assets/web/` 的 `.DS_Store` 會被打包 | 屬實，這是 rsync 的既定行為 | 採納。`b2f5ab5`：rsync 之後刪掉目的端的 `.DS_Store` |
+| 5 | 可之後再做（複查時提出） | 修正後探測依賴回應的標頭，但「伺服器正常時探測要成功」沒有測試釘住：把探測改成一律失敗，現有測試仍全過（原埠重啟後網址相同） | 屬實：那條測試只比對網址 | 目前的行為是對的（複查時實測過）。交給 Task 4 補一條測試：延遲請求進行中呼叫 `ensureRunning()`，該請求仍回 200。Task 4 正好是第一個呼叫 `ensureRunning()` 的任務 |
+
+後三項標的是「可之後再做」，仍然在這一輪修掉：實作代理本來就要因為第 1 項被叫回來，改動都只有幾行，而使用者要求以正確度為優先。
+
+### 實作時對計畫文字的詮釋（已接受）
+
+- 路徑穿越的請求（`GET /../secret`）實際回 404 而不是 400。Dart 的 `HttpServer` 在交給處理函式之前就把 `..` 正規化掉了，所以 `normalizePath` 的 `..` 檢查是第二道防線。計畫的斷言是「400 或 404」，仍然符合。
+- 只接受 GET，其他方法（包括 HEAD）回 405。停止後 `baseUri` 是 null。
+- 建構子寫成 `LocalWebServer({required this._loader})`，對外的參數名稱仍是計畫指定的 `loader`。
+- `ensureRunning` 的探測在最壞情況下（連得上但沒有回應）大約 6 秒才判定失效。
+
+### 協調者自己做的查證
+
+- 讀過 `local_web_server.dart` 全文、同步腳本、平台設定的 diff、`assets_sync_test.dart`，以及修正的 diff。計畫 Step 1 的 `expect` 都在測試檔裡。
+- 重跑 `flutter analyze`（零問題）、`flutter test`（修正前 45 個、修正後 47 個，全過）、`node web/test/run.mjs`（`ALL PASS (68)`）；`assets/web` 與 `web/` 內容一致。
+- 重跑兩個平台的建置，都成功。修正前的版本裝進 Android 模擬器與 iOS 模擬器後啟動成功，Android 的 logcat 沒有 `FATAL EXCEPTION` 或 Flutter 錯誤。
+
+審查代理另外做的查證（摘自它的報告）：在 repo 外的複本建置兩個平台，確認合併後的 manifest 帶有 `INTERNET`、`networkSecurityConfig`、單一 `<queries>` 區塊內的四個 intent，APK 內有 `network_security_config.xml` 和 7 個網頁檔，iOS 的 `Info.plist` 帶有 ATS 兩個鍵、語系與區域網路說明；用原始 socket 送了 22 種壞掉的請求，loader 從未收到含 `..`、反斜線或開頭斜線的路徑；用戶端中途斷線、40 MB 大檔、連發 30 個 `start`／`stop`／`ensureRunning`、同時 8 個 `ensureRunning()` 都沒有未捕捉的錯誤；同步腳本從不同目錄、含空白的路徑執行都正確，路徑不對時報錯且不動到 assets。
+
+### 驗證程度
+
+| 層級 | 內容 |
+|---|---|
+| 自動檢查通過 | 伺服器的 HTTP 行為與靜態方法、assets 同步、`rootBundleLoader`（在測試環境下）；`flutter analyze`；網頁自我測試 68 條 |
+| 建置與模擬器 | 兩個平台建置成功，原生設定確實進到建出來的 App；App 在兩個模擬器上啟動得起來（這時還沒有啟動伺服器） |
+| 未驗證 | 伺服器在真正的 App 裡提供網頁（Task 4 起）；明文 HTTP 在真正的 Android WebView 與 WKWebView 裡是否放行；iOS 實際回收 socket 之後的恢復；In-app browser 連不連得到 `127.0.0.1`；`<queries>` 在實機上的效果；所有報讀器行為 |
+
+### 留給後續任務的事項
+
+- Task 4：補上表第 5 項的測試。
+- 同步腳本的一個小毛病（複查時的附帶觀察，和修正無關）：目的端如果有一個來源已不存在、裡面只剩 `.DS_Store` 的目錄，第一次執行會印一行警告並留下空目錄，第二次執行才清掉。空目錄不進版控也不會被打包。留給整體審查判斷。
