@@ -20,7 +20,7 @@ enum ArrivalAnnounce {
   /// 基準：不主動朗讀，由網頁移動焦點。
   none,
 
-  /// AppBar 標題設成 liveRegion，標題改變時由報讀器念出。
+  /// AppBar 標題設成 liveRegion，預期標題改變時報讀器會念出（需實機確認）。
   liveRegionTitle,
 
   /// 用 `SemanticsService.sendAnnouncement`（只在 iOS 有效）。
@@ -69,7 +69,7 @@ class DemoWebViewConfig {
   /// 返回鍵先問網頁、再看 WebView 的上一頁，最後才關閉畫面。
   final bool syncBackWithWeb;
 
-  /// 載入中與錯誤用報讀器讀得到的 Flutter 元件顯示。
+  /// 載入中與錯誤用帶語意的 Flutter 元件顯示（預期報讀器讀得到，需實機確認）。
   final bool accessibleLoadingAndError;
 
   /// 網頁的 `alert`／`confirm`／`prompt` 由 App 顯示對話框。

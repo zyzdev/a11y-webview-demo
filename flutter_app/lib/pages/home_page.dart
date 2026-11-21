@@ -35,7 +35,7 @@ class HomePage extends StatelessWidget {
             if (all.any((s) => s.category == category)) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                // 分區標題帶 header 語意，報讀器使用者可以用標題導覽在分區之間跳。
+                // 分區標題帶 header 語意，預期報讀器使用者可以用標題導覽在分區之間跳（需實機確認）。
                 child: Semantics(
                   header: true,
                   child: Text(category.label, style: Theme.of(context).textTheme.titleMedium),

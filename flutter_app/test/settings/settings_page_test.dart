@@ -85,4 +85,29 @@ void main() {
     expect(find.textContaining('不是有效的網址'), findsOneWidget);
     expect(settings.externalBaseUrl, 'http://10.0.2.2:8000/');
   });
+
+  testWidgets('打了網址沒離開輸入框就選「外部」：先存起來，畫面立刻顯示新的位置，不改寫使用者打的字', (tester) async {
+    final settings = await _pumpSettingsPage(tester);
+    await tester.enterText(find.byType(TextField), '10.0.2.2:8000');
+    await tester.pump();
+    await tester.tap(find.text('外部（自己架的網頁伺服器）'));
+    await tester.pump();
+    // 點選項不會讓輸入框失焦，所以這裡的儲存不是失焦觸發的。
+    expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, true);
+    expect(settings.webSource, WebSource.external);
+    expect(settings.externalBaseUrl, 'http://10.0.2.2:8000/');
+    expect(find.text('目前載入網頁的位置：http://10.0.2.2:8000/'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '10.0.2.2:8000');
+  });
+
+  testWidgets('打了不合法的網址就選「外部」：顯示錯誤文字，不存，位置仍是內建', (tester) async {
+    final settings = await _pumpSettingsPage(tester);
+    await tester.enterText(find.byType(TextField), 'ftp://x');
+    await tester.pump();
+    await tester.tap(find.text('外部（自己架的網頁伺服器）'));
+    await tester.pump();
+    expect(find.textContaining('不是有效的網址'), findsOneWidget);
+    expect(settings.externalBaseUrl, '');
+    expect(find.text('目前載入網頁的位置：http://127.0.0.1:1234/'), findsOneWidget);
+  });
 }

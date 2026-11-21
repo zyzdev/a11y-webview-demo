@@ -77,8 +77,8 @@ class AppSettings extends ChangeNotifier {
   /// 把使用者輸入的外部網址轉成網頁的 base，不合法時回傳 null。
   ///
   /// 去掉頭尾空白；不含 `://` 就補上 `http://`（所以 `localhost:8000` 不會被當成 scheme 是 localhost）；
-  /// scheme 必須是 http 或 https 且有 host；路徑結尾補 `/`（`buildDemoUri` 用 `base.resolve`，
-  /// 少了結尾斜線會丟掉最後一段路徑）。帶查詢字串或 `#` 片段的也視為不合法，因為載入時查詢字串會被整個換掉。
+  /// scheme 必須是 http 或 https 且有 host（不含空白或 percent-encoding）；有寫埠號時要在 1–65535；
+  /// 路徑結尾補 `/`（`buildDemoUri` 用 `base.resolve`，少了結尾斜線會丟掉最後一段路徑）。帶查詢字串或 `#` 片段的也視為不合法，因為載入時查詢字串會被整個換掉。
   static Uri? parseExternalBase(String input) {
     var text = input.trim();
     if (text.isEmpty) return null;
@@ -87,6 +87,10 @@ class AppSettings extends ChangeNotifier {
     if (uri == null) return null;
     if (uri.scheme != 'http' && uri.scheme != 'https') return null;
     if (uri.host.isEmpty) return null;
+    // host 解析後含 % 表示原本有空白、全形字等不能直接放在 host 的字元（Uri 會把它們 percent-encode）。
+    if (uri.host.contains('%') || uri.host.contains(RegExp(r'\s'))) return null;
+    // 有寫埠號時必須在 1–65535（Uri 本身接受 80000、-1 這類值）。
+    if (uri.hasPort && (uri.port < 1 || uri.port > 65535)) return null;
     if (uri.hasQuery || uri.hasFragment) return null;
     final path = uri.path.endsWith('/') ? uri.path : '${uri.path}/';
     return uri.replace(path: path);

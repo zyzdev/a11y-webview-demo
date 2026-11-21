@@ -45,7 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 在送出或離開輸入框時才檢查，不在每打一個字時檢查：打到一半的網址一定不合法，
-  /// 錯誤訊息一直出現又消失，報讀器使用者會被反覆打斷。
+  /// 錯誤訊息一直出現又消失，報讀器使用者可能會被反覆打斷。
   ///
   /// 合法時存成正規化後的網址；[rewriteField] 為 true（按了完成鍵）時，輸入框也改成正規化後的網址。
   void _commitUrl({required bool rewriteField}) {
@@ -85,7 +85,10 @@ class _SettingsPageState extends State<SettingsPage> {
           RadioGroup<WebSource>(
             groupValue: settings.webSource,
             onChanged: (v) {
-              if (v != null) settings.setWebSource(v);
+              if (v == null) return;
+              // 選「外部」時輸入框可能還有焦點、內容還沒存；先存起來，「目前載入網頁的位置」才會立刻反映。
+              if (v == WebSource.external) _commitUrl(rewriteField: false);
+              settings.setWebSource(v);
             },
             child: const Column(
               children: [

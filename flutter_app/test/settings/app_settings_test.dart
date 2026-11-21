@@ -23,6 +23,21 @@ void main() {
     expect(AppSettings.parseExternalBase('http://'), isNull);
   });
 
+  test('parseExternalBase：埠號要在 1–65535；host 含空白或 percent-encoding（例如全形字）不合法', () {
+    expect(AppSettings.parseExternalBase('10.0.2.2:80000'), isNull);
+    expect(AppSettings.parseExternalBase('http://h:-1/'), isNull);
+    expect(AppSettings.parseExternalBase('10.0.2.2:0'), isNull);
+    expect(AppSettings.parseExternalBase('10.0.2.2 :8000'), isNull);
+    expect(AppSettings.parseExternalBase('ｈｔｔｐ：／／１０．０．２．２'), isNull);
+    expect(AppSettings.parseExternalBase('10.0.2.2:65535').toString(), 'http://10.0.2.2:65535/');
+    expect(AppSettings.parseExternalBase('10.0.2.2:1').toString(), 'http://10.0.2.2:1/');
+  });
+
+  test('parseExternalBase：帶查詢字串或 # 片段不合法', () {
+    expect(AppSettings.parseExternalBase('http://10.0.2.2:8000/?a=1'), isNull);
+    expect(AppSettings.parseExternalBase('http://10.0.2.2:8000/#top'), isNull);
+  });
+
   test('預設值：builtIn、空字串、ThemeMode.system、false', () async {
     final settings = await AppSettings.load(await SharedPreferences.getInstance());
     expect(settings.webSource, WebSource.builtIn);

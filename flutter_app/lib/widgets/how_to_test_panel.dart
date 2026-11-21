@@ -43,7 +43,7 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 小標題帶 header 語意，報讀器使用者可以用標題導覽在各段之間跳。
+          // 小標題帶 header 語意，預期報讀器使用者可以用標題導覽在各段之間跳（需實機確認）。
           Semantics(header: true, child: Text(title, style: theme.textTheme.titleSmall)),
           for (final line in lines) Text(line, style: theme.textTheme.bodyMedium),
         ],

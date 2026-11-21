@@ -189,4 +189,59 @@ void main() {
       expect(find.byType(DropdownButton<String>), findsNothing);
     });
   });
+
+  group('大字級版面：控制區加狀態列最多佔一半，body 至少拿到一半', () {
+    const fourVariants = [
+      DemoVariant('problem', '問題版', webMode: 'problem'),
+      DemoVariant('web-focus', '網頁移焦點'),
+      DemoVariant('live-region', 'App 用 liveRegion'),
+      DemoVariant('announce', 'App 用 sendAnnouncement'),
+    ];
+    const status = 'Flutter 在這個平台不支援 announcement，請用 liveRegion';
+    const cases = [
+      (Size(390, 844), 3.0),
+      (Size(320, 568), 3.0),
+      (Size(568, 320), 3.0),
+    ];
+
+    for (final (size, scale) in cases) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}、字級 $scale', (tester) async {
+        tester.view.devicePixelRatio = 1.0;
+        tester.view.physicalSize = size;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        const bodyKey = Key('body');
+        await tester.pumpWidget(MaterialApp(
+          home: DemoScaffold(
+            spec: _spec(variants: fourVariants),
+            variant: fourVariants.first,
+            onVariantChanged: (_) {},
+            title: '頁面抵達：朗讀與焦點',
+            titleIsLiveRegion: false,
+            body: const SizedBox.expand(key: bodyKey),
+            statusLine: Semantics(liveRegion: true, child: const Text(status)),
+          ),
+        ));
+        expect(tester.takeException(), isNull);
+
+        final appBarBottom = tester.getRect(find.byType(AppBar)).bottom;
+        final bodyRect = tester.getRect(find.byKey(bodyKey));
+        final area = bodyRect.bottom - appBarBottom;
+        expect(bodyRect.height, greaterThanOrEqualTo(area / 2), reason: 'body ${bodyRect.height} / 區域 $area');
+
+        // 狀態列在 body 上方，捲到看得見；而且保有自己的 liveRegion 語意。
+        final handle = tester.ensureSemantics();
+        await tester.scrollUntilVisible(find.text(status), 50, scrollable: find.byType(Scrollable).first);
+        // 字級 3.0 時這句話可能比捲動區還高，所以只要求它和捲動區（AppBar 與 body 之間）有交集。
+        final statusRect = tester.getRect(find.text(status));
+        expect(statusRect.top, lessThan(bodyRect.top));
+        expect(statusRect.bottom, greaterThan(appBarBottom));
+        expect(tester.getSemantics(find.text(status)), isSemantics(isLiveRegion: true, label: status));
+        handle.dispose();
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
 }

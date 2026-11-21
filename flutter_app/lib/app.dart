@@ -1,5 +1,7 @@
 // App 的根：MaterialApp（主題、語系）、AppScope（設定、內建伺服器、網頁 base）、生命週期監聽。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -149,25 +151,33 @@ class _ServerErrorNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        Material(
-          color: scheme.errorContainer,
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                '內建伺服器無法啟動，示範頁載不到內建網頁。可以到設定改用外部網頁來源，或重新開啟 App。（$message）',
-                style: TextStyle(color: scheme.onErrorContainer),
+    final topPadding = MediaQuery.paddingOf(context).top;
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        children: [
+          // 說明最多佔約三分之一高度（至少留得下狀態列加一行字），超過時在這一塊裡捲動。
+          // 大字級時說明才不會蓋掉下面的頁面，使用者仍點得到「設定」。
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: math.max(constraints.maxHeight / 3, topPadding + 48)),
+            child: Material(
+              color: scheme.errorContainer,
+              child: SafeArea(
+                bottom: false,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    '內建伺服器無法啟動，示範頁載不到內建網頁。可以到設定改用外部網頁來源，或重新開啟 App。（$message）',
+                    style: TextStyle(color: scheme.onErrorContainer),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-        Expanded(
-          child: MediaQuery.removePadding(context: context, removeTop: true, child: child),
-        ),
-      ],
+          Expanded(
+            child: MediaQuery.removePadding(context: context, removeTop: true, child: child),
+          ),
+        ],
+      ),
     );
   }
 }

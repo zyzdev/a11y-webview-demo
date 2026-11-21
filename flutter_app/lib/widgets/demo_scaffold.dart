@@ -10,10 +10,14 @@
 //
 // 狀態（目前的變體、選項的值）由呼叫端持有，這裡只負責畫與回呼。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../catalog/demo_spec.dart';
 import 'how_to_test_panel.dart';
+
+const double _dividerHeight = 1;
 
 class DemoScaffold extends StatelessWidget {
   const DemoScaffold({
@@ -39,7 +43,7 @@ class DemoScaffold extends StatelessWidget {
   /// AppBar 標題。
   final String title;
 
-  /// 標題是否設成 liveRegion（設計文件 §6.4：標題改變時由報讀器念出，用在 C06 的變體）。
+  /// 標題是否設成 liveRegion（設計文件 §6.4：預期標題改變時報讀器會念出，需實機確認；用在 C06 的變體）。
   final bool titleIsLiveRegion;
 
   final Widget body;
@@ -109,17 +113,26 @@ class DemoScaffold extends StatelessWidget {
         builder: (context, constraints) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 上半部最多佔一半高度，超過時可以捲動。「怎麼測」展開或字級放大時才不會把 body 擠掉。
+            // 控制區和狀態列合計最多佔一半高度（扣掉分隔線），超過時在這一塊裡捲動，body 永遠至少拿到一半。
+            // 字級放大或「怎麼測」展開時才不會把 body 擠掉。狀態列放在同一個捲動區的最後，
+            // 仍在 body 上方；它的 Semantics（之後會是 liveRegion）原樣保留。
             ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: constraints.maxHeight / 2),
-              child: SingleChildScrollView(child: controls),
-            ),
-            if (statusLine != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: statusLine,
+              constraints: BoxConstraints(maxHeight: math.max(0, constraints.maxHeight / 2 - _dividerHeight)),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    controls,
+                    if (statusLine != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: statusLine,
+                      ),
+                  ],
+                ),
               ),
-            const Divider(height: 1),
+            ),
+            const Divider(height: _dividerHeight),
             Expanded(child: body),
           ],
         ),
@@ -139,7 +152,8 @@ class _OptionDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final current = option.choices.contains(value) ? value! : option.choices.first;
     final callback = onChanged;
-    // MergeSemantics：標籤和下拉選單合成一個節點，報讀器念「標籤、目前的值、按鈕」，不會把標籤念成獨立的一段文字。
+    // MergeSemantics：標籤和下拉選單合成一個節點。預期報讀器會把標籤、目前的值和「按鈕」一起念，
+    // 不會把標籤念成獨立的一段文字（未在實機驗證）。
     return MergeSemantics(
       child: InputDecorator(
         decoration: InputDecoration(
