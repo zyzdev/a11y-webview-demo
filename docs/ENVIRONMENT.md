@@ -72,7 +72,7 @@
 | `WebKitWebViewController.setAllowsBackForwardNavigationGestures` | 存在（webview_flutter_wkwebview 3.27.2） |
 | `LaunchMode.inAppBrowserView`、`LaunchMode.externalApplication` | 存在（url_launcher 6.3.3） |
 
-探測時 `flutter pub add` 解析到的版本：`webview_flutter` 4.14.1、`webview_flutter_android` 4.14.1、`webview_flutter_wkwebview` 3.27.2、`url_launcher` 6.3.3（都等於計畫的下限）。正式專案的版本在 Task 2 建立專案後補在這裡。
+探測時 `flutter pub add` 解析到的版本：`webview_flutter` 4.14.1、`webview_flutter_android` 4.14.1、`webview_flutter_wkwebview` 3.27.2、`url_launcher` 6.3.3（都等於計畫的下限）。正式專案（`flutter_app/`，Task 2 建立）的 `pubspec.lock` 解析到的版本：`webview_flutter` 4.14.1、`webview_flutter_android` 4.14.1、`webview_flutter_wkwebview` 3.27.2、`url_launcher` 6.3.3、`shared_preferences` 2.5.6，五個都等於計畫的下限。
 
 範本預設值：iOS 部署目標 15.0（計畫要求 ≥ 13.0）；Android `minSdk` 24（計畫要求 ≥ 24）、`compileSdk` 與 `targetSdk` 36；Android 範本含 `res/values-night/`。
 
