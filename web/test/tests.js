@@ -88,6 +88,7 @@ eq(A11yCore.normalizeSettings({theme:'pink', textScale:'big', lang:'<script>', b
 eq(A11yCore.normalizeSettings({textScale:9}), {textScale:3});
 eq(A11yCore.normalizeSettings({textScale:0.1}), {textScale:0.8});
 eq(A11yCore.normalizeSettings({textScale:NaN}), {});
+eq(A11yCore.normalizeSettings({textScale:-2}), {});   // 和網址參數一致：負數不是合法的倍率，不是夾到 0.8
 eq(A11yCore.normalizeSettings(null), {});
 eq(A11yCore.normalizeSettings('theme=dark'), {});
 

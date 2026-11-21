@@ -151,7 +151,7 @@ var A11yCore = (function () {
     if (typeof input !== 'object' || input === null) return settings;
     if (typeof input.lang === 'string' && LANG_PATTERN.test(input.lang)) settings.lang = input.lang;
     if (input.theme === 'light' || input.theme === 'dark') settings.theme = input.theme;
-    if (typeof input.textScale === 'number' && isFinite(input.textScale)) {
+    if (typeof input.textScale === 'number' && isFinite(input.textScale) && input.textScale >= 0) {
       settings.textScale = clampTextScale(input.textScale);
     }
     FLAG_NAMES.forEach(function (name) {
