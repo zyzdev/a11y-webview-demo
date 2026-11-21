@@ -73,7 +73,12 @@ body {
   font-family: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
   font-size: 1rem;
   line-height: 1.7;
-  /* 字級放到很大時，長的英文字或網址要能斷行，不能撐出水平捲軸。 */
+  /*
+   * 字級放到很大時，長的英文字或網址要能斷行，不能撐出水平捲軸。
+   * 寫兩行是為了舊版瀏覽器：iOS Safari 15.4 之前不認得 anywhere，會忽略第二行、沿用第一行的
+   * break-word；認得的瀏覽器用第二行。
+   */
+  overflow-wrap: break-word;
   overflow-wrap: anywhere;
 }
 
