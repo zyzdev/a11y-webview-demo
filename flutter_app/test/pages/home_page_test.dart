@@ -5,9 +5,13 @@ import 'package:a11y_webview_demo/server/local_web_server.dart';
 import 'package:a11y_webview_demo/settings/app_settings.dart';
 import 'package:a11y_webview_demo/settings/settings_page.dart';
 import 'package:a11y_webview_demo/webview/demo_webview_config.dart';
+import 'package:a11y_webview_demo/widgets/demo_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+
+import '../webview/fake_webview_platform.dart';
 
 DemoWebViewConfig _baseline(String variantId, Map<String, String> options) => DemoWebViewConfig.baseline;
 
@@ -75,6 +79,22 @@ void main() {
     for (final name in ['兩邊約定', 'App 單方處理', '交界處限制', '工具']) {
       expect(find.text(name), findsNothing);
     }
+  });
+
+  testWidgets('沒有注入 pageBuilder 時，點一列開 DemoPage', (tester) async {
+    WebViewPlatform.instance = FakeWebViewPlatform();
+    SharedPreferences.setMockInitialValues({});
+    final settings = await AppSettings.load(await SharedPreferences.getInstance());
+    await tester.pumpWidget(AppScope(
+      settings: settings,
+      server: LocalWebServer(loader: (_) async => null),
+      builtInBase: Uri.parse('http://127.0.0.1:1234/'),
+      child: const MaterialApp(home: HomePage(specs: _specs)),
+    ));
+    await tester.tap(find.text('字體大小'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DemoPage), findsOneWidget);
+    expect(tester.widget<DemoPage>(find.byType(DemoPage)).spec.id, 'c01');
   });
 
   testWidgets('AppBar 有「設定」按鈕，點了開設定頁', (tester) async {

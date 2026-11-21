@@ -1,6 +1,6 @@
 // demoCatalog 的結構檢查。測試從 flutter_app/ 執行，網頁檔讀 assets/web/ 底下的複本。
 //
-// 目錄目前是空的，所以另外用兩組假資料證明檢查本身抓得到錯誤（catalogProblems 對正確的資料回報空清單，
+// 另外用兩組假資料證明檢查本身抓得到錯誤（catalogProblems 對正確的資料回報空清單，
 // 對故意寫錯的資料回報每一種錯）。
 
 import 'dart:io';
@@ -77,6 +77,75 @@ const _goodHowTo = HowToTest(setup: '前置', steps: ['步驟'], expectProblem: 
 void main() {
   test('demoCatalog 符合結構規則', () {
     expect(catalogProblems(demoCatalog), isEmpty);
+  });
+
+  group('C01 字體大小', () {
+    final c01 = demoCatalog.singleWhere((s) => s.id == 'c01');
+
+    // DemoWebViewConfig 沒有 ==，逐欄比較。
+    List<Object?> fields(DemoWebViewConfig c) => [
+          c.textScale,
+          c.passTheme,
+          c.passA11yPrefs,
+          c.passLang,
+          c.langOverride,
+          c.titleFromWeb,
+          c.arrival,
+          c.syncBackWithWeb,
+          c.accessibleLoadingAndError,
+          c.handleJsDialogs,
+          c.handleExternalNavigation,
+          c.enableZoom,
+          c.androidHybridComposition,
+        ];
+
+    test('類別 contract、修正方 both、可信度 verified、兩個平台、網頁檔', () {
+      expect(c01.title, '字體大小');
+      expect(c01.category, DemoCategory.contract);
+      expect(c01.fixSide, FixSide.both);
+      expect(c01.confidence, Confidence.verified);
+      expect(c01.platform, DemoPlatform.both);
+      expect(c01.webPath, 'pages/c01-text-scale.html');
+    });
+
+    test('三個變體：problem／問題版／problem、fixed／修正版／fixed、app-only／只改 App／problem', () {
+      expect([for (final v in c01.variants) v.id], ['problem', 'fixed', 'app-only']);
+      expect([for (final v in c01.variants) v.label], ['問題版', '修正版', '只改 App']);
+      expect([for (final v in c01.variants) v.webMode], ['problem', 'fixed', 'problem']);
+      expect([for (final v in c01.variants) v.webOff], everyElement(isEmpty));
+    });
+
+    test('config：問題版只關掉字級、修正版是基準、只改 App 改用 App 負責；其他欄位都和基準相同', () {
+      const baseline = DemoWebViewConfig.baseline;
+      expect(fields(c01.configFor('problem', const {})), fields(baseline.copyWith(textScale: TextScaleStrategy.none)));
+      expect(fields(c01.configFor('fixed', const {})), fields(baseline));
+      expect(fields(c01.configFor('app-only', const {})), fields(baseline.copyWith(textScale: TextScaleStrategy.appOwned)));
+      expect(baseline.textScale, TextScaleStrategy.webOwned);
+    });
+
+    test('「怎麼測」：前置、步驟、兩段預期、依據、程式位置都有；三個變體的預期都寫到', () {
+      final h = c01.howToTest;
+      expect(h.setup, isNotEmpty);
+      expect(h.steps, isNotEmpty);
+      expect(h.evidence, isNotEmpty);
+      expect(h.codeRefs, isNotEmpty);
+      expect(h.expectProblem, contains('問題版'));
+      expect(h.expectFixed, contains('修正版'));
+      expect(h.expectFixed, contains('只改 App'));
+      expect(h.expectFixed, contains('iPad'));
+    });
+
+    test('網頁檔照範本寫：data-page、data-fixes、color-scheme、a11y-app.js 在 <body> 最前面、不載入外部資源', () {
+      final html = File('assets/web/pages/c01-text-scale.html').readAsStringSync();
+      expect(html, contains('<body data-page="c01" data-fixes="textScale">'));
+      expect(html, contains('<meta name="color-scheme" content="light dark">'));
+      expect(
+        RegExp(r'<body[^>]*>\s*<script src="\.\./shared/a11y-app\.js"></script>').hasMatch(html),
+        isTrue,
+      );
+      expect(RegExp(r'''(src|href)\s*=\s*["']?(https?:)?//''').hasMatch(html), isFalse);
+      expect(html, isNot(contains('@import')));
+    });
   });
 
   test('檢查本身：正確的假資料沒有問題', () {

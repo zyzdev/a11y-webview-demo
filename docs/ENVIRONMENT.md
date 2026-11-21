@@ -49,6 +49,36 @@
 | iOS | **可用** | `flutter build ios --simulator --debug` 建置成功（CocoaPods，`pod install` 正常） |
 | Android | **可用** | `flutter build apk --debug` 建置成功（修改設定後用真實設定再建一次也成功）。APK 裝進 Android 模擬器後可以啟動，行程存在 |
 
+### Task 5 在模擬器上看到的結果（2026-11-21，debug 建置）
+
+只是模擬器上的畫面和 log，沒有用報讀器，也不代表實機一定一樣。
+
+**iOS（iPhone 17，iOS 27.0）**
+
+- 內建網頁 `http://127.0.0.1:<埠>/pages/c01-text-scale.html` 在 WKWebView 載入成功，沒有被 ATS 擋下。
+- Bridge 通了：AppBar 標題從目錄的「字體大小」換成網頁回報的「字體大小示範」。debug log 裡 `onPageStarted` 一律比網頁的 `ready` 先到，信任判斷放行。
+- 三個變體都切換得了。每次切換都重新載入，AppBar 標題先回到「字體大小」，等新網頁送 `ready` 後才換成網頁標題。
+- 字級：`xcrun simctl ui <udid> content_size extra-extra-extra-large` 可以用，Flutter 得到的倍率是 1.35（做完已改回 `large`）。
+  - 問題版：網頁的字不變。
+  - 修正版：網頁收到 `textScale` 1.35，根字級 135%，卡片跟著變高、沒有被切掉。頁面開著時改回 `large`，網頁即時變回 100%。
+  - 只改 App：注入 `-webkit-text-size-adjust` 後網頁的字變大，但卡片高度固定，最後一行被切掉。頁面開著時改字級，App 會重新注入。
+- 「用 In-app browser 開啟本頁」：SFSafariViewController 開得了 `http://127.0.0.1` 的內建網頁（不帶設定參數，顯示問題版與修正版的切換連結），沒有出現提示。
+- log 裡沒有 Flutter 例外。
+
+**Android（Pixel_4_API_32，API 32）**
+
+- 這次用 `flutter emulators --launch Pixel_4_API_32` 啟動兩次都沒有開機成功：第一次模擬器行程自己結束，第二次卡住（adb 看不到裝置、行程的 CPU 時間不動）。改用無視窗啟動 `~/Library/Android/sdk/emulator/emulator -avd Pixel_4_API_32 -no-window -no-audio -no-boot-anim -no-snapshot-save` 才成功。
+- 內建網頁載入成功；AppBar 標題同樣從「字體大小」換成「字體大小示範」；`onPageStarted` 比 `ready` 先到。
+- 三個變體都切換得了，每次切換都重新載入，標題先回到「字體大小」。
+- 字級：用 `adb shell settings put system font_scale 1.5` 調整（做完已用 `settings delete system font_scale` 還原成原本的未設定）。
+  - 問題版：字變大（WebView 建立時自動套用系統字級），卡片最後一行被切掉。頁面開著時把字級改回 1.0，App 的介面變回原大小，網頁的字沒有變。
+  - 修正版：網頁收到 `textScale` 1.50，根字級 150%，卡片不破版。字的大小和「只改 App」差不多，沒有放大成兩倍多，代表 `setTextZoom(100)` 有作用。頁面開著時改回 1.0，網頁即時變回 100%。
+  - 只改 App：`setTextZoom(150)` 讓字變大，卡片仍被切掉。頁面開著時改字級，App 會重設放大倍率。
+- 設定頁打開 Hybrid Composition 後回到示範頁，WebView 重建並載入，view hierarchy 出現 `FlutterMutatorView`。關掉後是 `PlatformViewWrapper`（TLHC）。
+- 「用 In-app browser 開啟本頁」：Custom Tabs 叫出了 Chrome，但這台模擬器的 Chrome 沒有完成首次設定，停在 Chrome 的首次啟動畫面（繼續就要同意 Chrome 的服務條款）。這裡沒有代為同意，所以 Chrome 能不能載入 `127.0.0.1` 的內建網頁沒有確認。App 這邊 `launchUrl` 回傳成功，沒有出現提示。
+- 每次用 `settings put system font_scale` 改字級，系統都會短暫顯示「Viewing full screen」提示（`ImmersiveModeConfirmation`），幾秒後自己消失。回到沒有 WebView 的首頁改字級也一樣會出現。App 沒有呼叫任何全螢幕 API，原因沒有查明。
+- logcat 沒有 `FATAL EXCEPTION`，也沒有 Dart 例外。唯一的 `E flutter` 是 App 一啟動就出現的兩行 Impeller 訊息「EGL Error: Success (12288)」，出現在任何示範頁打開之前。
+
 ## 模擬器與裝置
 
 - iOS 模擬器的執行環境：iOS 18.4、26.0、26.5、27.0。iOS 27.0 的 iPhone 有 iPhone 18 Pro、iPhone 18 Pro Max、iPhone 17e、iPhone Air、iPhone 17；另有數台 iPad。啟動方式：`xcrun simctl boot "iPhone 17"` 之後用 `flutter devices` 取得裝置代號，再 `flutter run -d <代號>`。
@@ -79,5 +109,7 @@
 ## 未驗證的項目
 
 - **所有報讀器行為**（TalkBack 與 VoiceOver）：沒有任何一項在實機上驗證過。iOS 模擬器不能執行 VoiceOver，TalkBack 在模擬器上的行為也不等於實機。
-- **正式專案的 Android 原生設定**：`AndroidManifest.xml`、`network_security_config.xml`、TLHC／Hybrid Composition 切換、`setTextZoom`。上面的建置用的是拋棄式專案，正式專案從 Task 2、Task 3 開始才有可以建置和在模擬器上執行的內容，各任務的結果會補在這裡。
+- **正式專案的 Android 原生設定**：明文 HTTP 設定、TLHC／Hybrid Composition 切換、`setTextZoom` 在模擬器上的表現見上面「Task 5 在模擬器上看到的結果」。報讀器在兩種顯示模式下的表現沒有驗證。
+- **Android 的 In-app browser（Custom Tabs）能不能開啟內建網頁**：模擬器上停在 Chrome 的首次啟動畫面，沒有確認。
+- **iPad 上 `-webkit-text-size-adjust` 是否有效**：沒有在 iPad 模擬器或實機上試。
 - **Android 實機與 iOS 實機上的一切**，包括 iOS 實機載入 `http://127.0.0.1`（ATS 設定）與 In-app browser 能否開啟內建網頁：待 Task 5 的實機檢查點確認。

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>字體大小示範</title>
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+  /*
+   * 修正版（textScale 啟用）：字級用 rem，跟著根字級放大；根字級由 a11y-app.js 依 App 傳來的
+   * textScale 設定。卡片不固定高度，內容多高卡片就多高。
+   */
+  .card {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
+    border: 0.0625rem solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--surface);
+  }
+
+  .card h3 {
+    margin: 0 0 0.25rem;
+    font-size: 1.125rem;
+  }
+
+  .card p {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  /*
+   * 問題版（textScale 被關掉，<html> 上有 nofix-textScale）：常見的寫法。字級用 px，卡片固定高度、
+   * 超出的部分藏起來。預設字級下兩個版本看起來一樣；字一放大，固定高度裝不下，最後一行就被切掉。
+   * 和修正版只差在這一段，其他樣式完全相同。
+   */
+  html.nofix-textScale .card {
+    height: 92px;
+    overflow: hidden;
+    padding: 12px 16px;
+    border-width: 1px;
+    border-radius: 8px;
+  }
+
+  html.nofix-textScale .card h3 {
+    margin-bottom: 4px;
+    font-size: 18px;
+  }
+
+  html.nofix-textScale .card p {
+    font-size: 16px;
+  }
+</style>
+</head>
+<!--
+  C01 字體大小（設計文件 §7 C01）。
+  data-fixes="textScale"：問題版關掉這一項，修正版打開。兩版的差異只有這一項：
+  a11y-app.js 依它決定根字級要不要跟 textScale，上面的樣式依 html.nofix-textScale 決定卡片的寫法。
+-->
+<body data-page="c01" data-fixes="textScale">
+<script src="../shared/a11y-app.js"></script>
+
+<header class="site-header">
+  <p class="site-name">WebView 無障礙範例網站</p>
+  <a class="site-back" href="../index.html">回上一頁</a>
+  <h1>字體大小示範</h1>
+</header>
+
+<main>
+  <h2>這一頁在示範什麼</h2>
+  <p>把手機的系統字級調大之後，網頁的字有沒有跟著變大、卡片會不會破版。要觀察的是下面「最新消息」的三張卡片。</p>
+  <p id="scale-status">這一頁沒有收到 App 的字級倍率（網址參數 textScale）。</p>
+
+  <h2>最新消息</h2>
+  <article class="card">
+    <h3>門市營業時間調整</h3>
+    <p>自下個月起，平日營業到晚上九點，週末不變。</p>
+  </article>
+  <article class="card">
+    <h3>會員點數即將到期</h3>
+    <p>你有 320 點將在 12 月 31 日到期，請記得使用。</p>
+  </article>
+  <article class="card">
+    <h3>新功能：預約取貨</h3>
+    <p>線上下單後選擇門市與時段，到店不用排隊。</p>
+  </article>
+
+  <h2>兩個版本的寫法</h2>
+  <ul>
+    <li>問題版：卡片的字級用 px，卡片固定高度，裝不下的部分藏起來。網頁不理會 App 傳來的字級倍率。</li>
+    <li>修正版：字級用 rem，根字級跟著 App 傳來的字級倍率放大；卡片不固定高度。</li>
+  </ul>
+  <p>直接用瀏覽器開這一頁時，可以在網址加上 <code>textScale=2.00</code> 模擬 App 傳來的倍率，比較兩個版本。</p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // 顯示這一頁收到的字級倍率，方便對照每個版本由誰放大。只是一般文字，不是 aria-live：
+  // 倍率是使用者自己改了系統設定才變，不需要另外念出來（設計文件 §6.4）。
+  var status = document.getElementById('scale-status');
+
+  function renderStatus() {
+    var scale = a11yApp.params.textScale;
+    if (scale === null) {
+      status.textContent = '這一頁沒有收到 App 的字級倍率（網址參數 textScale）。';
+      return;
+    }
+    var honored = a11yApp.fixEnabled('textScale');
+    var percent = A11yCore.rootFontPercent(scale, honored);
+    status.textContent = honored
+      ? '這一頁收到 App 的字級倍率 ' + scale.toFixed(2) + '，根字級設為 ' + percent + '%。'
+      : '這一頁收到 App 的字級倍率 ' + scale.toFixed(2) + '，但問題版不採用，根字級維持 ' + percent + '%。';
+  }
+
+  renderStatus();
+  a11yApp.onSettingsChanged(renderStatus);
+})();
+</script>
+</body>
+</html>

@@ -53,6 +53,11 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # 測試用：把 WebViewPlatform.instance 和 UrlLauncherPlatform.instance 換成假的實作。
+  # 兩者原本就是 webview_flutter、url_launcher 的相依套件，版本照 pubspec.lock 已解析的版本。
+  webview_flutter_platform_interface: ^2.15.1
+  url_launcher_platform_interface: ^2.3.2
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
