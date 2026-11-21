@@ -678,11 +678,12 @@ Future<void> openInAppBrowser(BuildContext context, Uri uri);          // 失敗
 
 本任務的 `DemoWebView` 要做到：
 
-- `JavaScriptMode.unrestricted`；用 `onPageStarted`／`onUrlChange` 追蹤目前頂層網址。
-- 註冊 `A11yBridge` 頻道。**只有 `isTrustedPage(目前頂層網址, webBase)` 為 true 時**才把訊息交給 `BridgeMessage.parse`，結果更新 `DemoWebController`（`ReadyMessage` 更新 `webTitle`、`webContract`、`webCaps`；`RouteChangedMessage` 更新 `webTitle`）並送進 `messages`。
-- 收到 `ReadyMessage` 後執行一次 `updateSettingsScript(目前的 snapshot)`。之後 `MediaQuery` 或主題改變使 `snapshotOf` 的結果不同時再執行。
-- `onPageStarted`／`onPageFinished` 更新 `loading`。
-- 字級：每次頂層網址改變時算 `effectiveTextScaleStrategy(config.textScale, trustedPage: …)`。`webOwned` → Android `applyAndroidTextZoom(100)`。`appOwned` → Android `applyAndroidTextZoom(倍率×100)`，iOS 在 `onPageFinished` 後 `applyIosTextSizeAdjust(倍率×100)`；字級改變時重做。`none` → 都不做。
+- `JavaScriptMode.unrestricted`。頂層網址分成「已換上」與「載入中」兩個（設計文件 §6.3）：`onPageStarted` 只記為載入中；`onPageFinished` 才把它的網址當成已換上、結束載入中；主框架的載入失敗或取消（`onWebResourceError`）結束載入中、已換上的網址不變；沒有載入中時的 `onUrlChange` 直接更新已換上的網址，載入中時的 `onUrlChange` 更新載入中的網址（轉址）。原因：iOS 的 `onPageStarted`／`onUrlChange` 在新頁面換上之前就觸發，Android 的 `onPageStarted` 則在換上時才觸發。
+- 註冊 `A11yBridge` 頻道。**只有目前屬於信任範圍時**才把訊息交給 `BridgeMessage.parse`：沒有載入中時看 `isTrustedPage(已換上的網址, webBase)`；載入中時已換上與載入中的網址都要通過（還沒換上過任何頁面時只看載入中的網址）。結果更新 `DemoWebController`（`ReadyMessage` 更新 `webTitle`、`webContract`、`webCaps`；`RouteChangedMessage` 更新 `webTitle`）並送進 `messages`。
+- 收到 `ReadyMessage` 後執行一次 `updateSettingsScript(目前的 snapshot)`。之後 `MediaQuery` 或主題改變使 `snapshotOf` 的結果不同時再執行（只送給已換上、屬於自家網域、而且送過 `ready` 的頁面）。`onPageFinished` 時，已換上的頁面屬於自家網域、但這次載入沒有收到 `ready`，就執行 `jsCall('reportReady')` 請網頁補送（設計文件 §6.2）。
+- `onPageStarted`／`onPageFinished`／主框架的載入失敗更新 `loading`。這個任務的 `onWebResourceError` 只用來結束載入中狀態，不顯示錯誤畫面（那是 Task 8）。
+- 字級：依已換上的網址算 `effectiveTextScaleStrategy(config.textScale, trustedPage: …)`。`webOwned` → Android `applyAndroidTextZoom(100)`，iOS 在 `onPageFinished` 後清掉 `webkitTextSizeAdjust`。`appOwned` → Android `applyAndroidTextZoom(倍率×100)`，iOS 在 `onPageFinished` 後 `applyIosTextSizeAdjust(倍率×100)`；字級改變時重做，但載入中的 iOS 頁面不注入（等載入完成）。`none` → 都不做。Android 的 `setTextZoom` 是整個 WebView 的設定，而 Android 在 `onPageStarted` 時已換上新頁面，所以 Android 可以在 `onPageStarted` 依新網址先套用。
+- 測試：測試用的假平台要能模擬兩種時序（Android：`onPageStarted` 時已換上；iOS：`onPageStarted` 後舊頁面仍會送訊息，`onPageFinished` 才換上），以及開始載入後被取消、沒有換上；涵蓋信任判斷、`reportReady` 補送、設定的重送、字級套用到哪一頁。
 - 其餘旗標（返回、載入與錯誤、對話框、連結、縮放）在 Task 7–8 接上。
 
 `DemoPage`：持有變體與選項的狀態；用 `buildDemoUri` 組網址（`webMode`、`webOff` 來自變體）；`DemoWebView` 的 `key` 包含變體、選項和顯示模式（任何一項改變就重建 WebView）。顯示模式是 `config.androidHybridComposition ?? settings.androidHybridComposition`。AppBar 標題：`titleFromWeb` 為 true 且網頁已回報時用 `webTitle`，為 true 但尚未回報時用 `spec.title`，為 false 時固定顯示「WebView 範例」。AppBar 的動作按鈕都有 tooltip：「用 In-app browser 開啟本頁」、「重新載入」（`web.reload()`）、「設定」，後面再接 `spec.toolbarBuilder` 提供的按鈕。
