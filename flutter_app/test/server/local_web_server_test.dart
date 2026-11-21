@@ -163,6 +163,39 @@ void main() {
         await blocker.close();
       }
     });
+
+    test('ensureRunning：原埠被別的 HTTP 伺服器佔走時，不把它當成自己，換埠重啟', () async {
+      final first = await server.start();
+      await server.debugCloseSocket();
+      final foreign = await HttpServer.bind(InternetAddress.loopbackIPv4, first.port);
+      foreign.listen((request) {
+        request.response
+          ..statusCode = 200
+          ..write('foreign')
+          ..close();
+      });
+      try {
+        final again = await server.ensureRunning();
+        expect(again.port, isNot(first.port));
+        expect(server.baseUri, again);
+        final res = await _send(again.resolve('/'));
+        expect(res.status, 200);
+        expect(res.body, '<h1>home</h1>');
+      } finally {
+        await foreign.close(force: true);
+      }
+    });
+
+    test('查詢字串解不開（%ff）時視為沒有延遲，照常回 200', () async {
+      final base = await server.start();
+      final plain = await _rawStatusLine(
+          base, 'GET /?x=%ff HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n');
+      expect(plain, startsWith('HTTP/1.1 200'));
+      final delayed = await _rawStatusLine(
+          base, 'GET /index.html?__delay=%ff HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n');
+      expect(delayed, startsWith('HTTP/1.1 200'));
+      expect(requested, ['index.html', 'index.html']);
+    });
   });
 
   group('LocalWebServer（靜態方法）', () {
@@ -187,6 +220,10 @@ void main() {
       // 無法解碼：%zz 不是合法的 percent-encoding；%ff 解出來不是合法的 UTF-8。
       expect(LocalWebServer.normalizePath('/%zz'), isNull);
       expect(LocalWebServer.normalizePath('/%ff'), isNull);
+      // 解碼後含 /、\、NUL 的段落。
+      expect(LocalWebServer.normalizePath('/..%2fsecret'), isNull);
+      expect(LocalWebServer.normalizePath('/%5c..%5csecret'), isNull);
+      expect(LocalWebServer.normalizePath('/%00'), isNull);
     });
 
     test('parseDelay', () {

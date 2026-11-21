@@ -9,6 +9,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +21,17 @@ class LocalWebServer {
   LocalWebServer({required this._loader});
 
   final AssetLoader _loader;
+
+  /// 每個實例的隨機識別值，放在每個回應的 [_instanceHeader] 標頭裡。
+  /// ensureRunning 探測時比對它，才分得出回應的是自己，還是之後佔走同一個埠的別的伺服器。
+  final String _instanceToken = _randomToken();
+
+  static const String _instanceHeader = 'x-a11y-demo-server';
+
+  static String _randomToken() {
+    final random = Random.secure();
+    return List<String>.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  }
 
   HttpServer? _server;
   Uri? _baseUri;
@@ -104,14 +116,14 @@ class LocalWebServer {
     return uri;
   }
 
-  /// 對自己發一個請求。收到任何 HTTP 回應就算活著。
+  /// 對自己發一個請求。回應帶有這個實例的識別值才算活著；別的伺服器的回應視為失效。
   Future<bool> _probe(Uri base) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 1);
     try {
       final request = await client.getUrl(base).timeout(const Duration(seconds: 2));
       final response = await request.close().timeout(const Duration(seconds: 2));
       await response.drain<void>().timeout(const Duration(seconds: 2));
-      return true;
+      return response.headers.value(_instanceHeader) == _instanceToken;
     } catch (_) {
       return false;
     } finally {
@@ -123,6 +135,7 @@ class LocalWebServer {
     final response = request.response;
     try {
       response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
+      response.headers.set(_instanceHeader, _instanceToken);
       if (request.method != 'GET') {
         response.headers.set(HttpHeaders.allowHeader, 'GET');
         _plain(response, HttpStatus.methodNotAllowed, 'Method Not Allowed');
@@ -133,7 +146,7 @@ class LocalWebServer {
         _plain(response, HttpStatus.badRequest, 'Bad Request');
         return;
       }
-      final delay = parseDelay(request.uri.queryParameters['__delay']);
+      final delay = parseDelay(_delayParam(request.uri));
       if (delay > Duration.zero) await Future<void>.delayed(delay);
       final bytes = await _loader(path);
       if (bytes == null) {
@@ -156,6 +169,18 @@ class LocalWebServer {
       } catch (_) {
         // 用戶端已經斷線。
       }
+    }
+  }
+
+  /// 讀查詢參數 `__delay`。查詢字串解不開（例如 `%ff` 不是合法的 UTF-8）時當作沒帶，
+  /// 和 [parseDelay]「不合法 → 0」一致，照常提供檔案。
+  static String? _delayParam(Uri uri) {
+    try {
+      return uri.queryParameters['__delay'];
+    } on FormatException {
+      return null;
+    } on ArgumentError {
+      return null;
     }
   }
 

@@ -21,4 +21,6 @@ fi
 
 mkdir -p "$dest_dir"
 rsync -a --delete --exclude .DS_Store "$src_dir/" "$dest_dir/"
+# --exclude 也會讓目的端既有的 .DS_Store 不受 --delete 影響；Finder 留下的要另外刪，免得被打包進 App。
+find "$dest_dir" -name .DS_Store -type f -delete
 echo "已同步 $src_dir/ → $dest_dir/"
