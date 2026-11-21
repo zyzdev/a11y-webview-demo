@@ -316,7 +316,7 @@ a11y-webview-demo/
 
 ### C06 頁面抵達：朗讀與焦點
 - 變體：問題版／修正 A（網頁移焦點）／修正 B（App liveRegion）／修正 C（App sendAnnouncement，僅 iOS）
-- 網頁 `c06-arrival.html`：兩個畫面的 SPA（清單、詳情），用 `history.pushState` 換頁。問題版不回報也不移焦點。修正 A 回報並把焦點移到新畫面的標題（`tabindex="-1"`）。修正 B、C 只回報、不移焦點
+- 網頁 `c06-arrival.html`：兩個畫面的 SPA（清單、詳情），用 `history.pushState` 換頁。問題版換頁時不回報也不移焦點（載入時的 `ready` 握手照常送）。修正 A 回報並把焦點移到新畫面的標題（`tabindex="-1"`）。修正 B、C 只回報、不移焦點
 - Flutter：修正 A 只安靜地更新 AppBar 標題。修正 B 把 AppBar 標題設為 `liveRegion`。修正 C 在 `MediaQuery.supportsAnnounceOf` 為 true 時呼叫 `sendAnnouncement`，為 false 時在頁面上顯示「Flutter 在這個平台不支援 announcement，請用 liveRegion」
 - 怎麼測：用報讀器點清單項目進入詳情，注意聽到什麼、焦點在哪
 - 預期：問題版沒有任何提示，焦點停在已消失的項目。修正 A 念出新標題且焦點在新標題。修正 B 念出新標題但焦點沒動。修正 C 在 iOS 念出新標題，在 Android 顯示不支援

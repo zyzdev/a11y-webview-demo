@@ -208,8 +208,8 @@ window.a11yApp = {
 - `fixEnabled` 的規則：只有本頁 `data-fixes` 列出的修正可以被關掉；`mode=problem` 關掉全部列出的，`off` 關掉其中指定的。沒列在本頁的修正永遠啟用。
 - DOM 約定：載入時在 `<html>` 設 `data-mode`、`data-theme`、`data-embedded`；每個被關掉的修正加 class `nofix-<name>`；偏好加 class `pref-bold`、`pref-contrast`、`pref-reduce-motion`；根字級用 `style.fontSize = <percent>%`。
 - 每頁的 header：`<header class="site-header">`，內含網站名稱、`<h1>`、回上一頁連結。在 App 內（`embedded`）時，`embeddedChrome` 啟用就隱藏網站名稱和返回連結，`embeddedTitle` 啟用就隱藏 `<h1>`。不在 App 內時，header 另外顯示「問題版／修正版」切換連結。
-- `arrival` 啟用時：`DOMContentLoaded` 後自動 `reportReady()`，送 `{type:'ready', title: document.title, lang: <html lang>, contract: 1, caps: [目前啟用的修正名稱]}`；`pageshow` 事件的 `persisted` 為 true 時再送一次。
-- 朗讀的分工（設計文件 §6.4）：`reportRoute` 在 App 內只送訊息給 App；不在 App 內時改把標題寫進頁面上一個 `aria-live="polite"` 的隱藏區域。`routeFocus` 啟用時，頁面換畫面後把焦點移到新畫面的標題。
+- `ready` 是握手，和任何修正無關：每一頁在 `DOMContentLoaded` 後一律自動 `reportReady()`，送 `{type:'ready', title: document.title, lang: <html lang>, contract: 1, caps: [目前啟用的修正名稱]}`；`pageshow` 事件的 `persisted` 為 true 時再送一次。`arrival` 修正只控制網頁內換頁的回報：關閉時 `reportRoute` 不送 `routeChanged`。
+- 朗讀的分工（設計文件 §6.4，一件事只用一種方式告知）：`reportRoute` 在 App 內只送訊息給 App。不在 App 內時，`routeFocus` 啟用就由焦點移動負責朗讀、不寫 `aria-live`；`routeFocus` 關閉才把標題寫進頁面上一個 `aria-live="polite"` 的隱藏區域。`routeFocus` 啟用時，頁面換畫面後把焦點移到新畫面的標題。
 
 - [ ] **Step 1: 寫失敗的測試 `web/test/tests.js`**（只用全域的 `A11yCore` 和 `eq`，不依賴執行環境）
 
