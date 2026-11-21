@@ -268,6 +268,49 @@ void main() {
       expect(l.pageFinished(_self), isEmpty);
       expect(l.readyOnCommittedPage, isTrue);
     });
+
+    // 這次載入中收到過 onUrlChange 時，以最後一次 onUrlChange 的網址為準（和主框架錯誤同一個原則）。
+    // 上面三條（Android 的 204、取消導覽，App 發起的 loadUri 打到 204）都沒有 onUrlChange，已換上的網址不變。
+
+    test('fail-closed 開始的載入（換了 origin 的 onUrlChange）只收到 onPageFinished → 換成那個外部網址、訊息被擋；onPageFinished 本身的網址不採用',
+        () {
+      final l = _loadedSelf(scale: 1.5);
+      expect(l.urlChanged(_ext), isEmpty, reason: '還沒有 onPageStarted，Android 的 setTextZoom 跟著已換上的自家頁');
+      expect(l.loading, isTrue);
+      expect(l.acceptsMessages, isFalse);
+      final finished = l.pageFinished(_noContent);
+      expect(l.loading, isFalse);
+      expect(l.committedUrl, Uri.parse(_ext), reason: '用最後一次 onUrlChange 的網址，不用 onPageFinished 帶的網址');
+      expect(l.acceptsMessages, isFalse);
+      expect(l.readyOnCommittedPage, isFalse);
+      expect(finished, [const SetAndroidTextZoom(150), const SetIosTextSizeAdjust(150)],
+          reason: '外部頁改由 App 負責字級；不請外部頁補送 ready、不送設定');
+    });
+
+    test('App 發起的載入中收到 onUrlChange、沒有 onPageStarted，只收到 onPageFinished → 以最後一次 onUrlChange 的網址為已換上', () {
+      final l = _loadedSelf();
+      l.appLoadStarted(Uri.parse(_selfIndex));
+      l.urlChanged(_ext);
+      l.urlChanged(_evil);
+      final finished = l.pageFinished(_noContent);
+      expect(l.loading, isFalse);
+      expect(l.committedUrl, Uri.parse(_evil));
+      expect(l.acceptsMessages, isFalse);
+      expect(finished, isNot(contains(const RequestReportReady())));
+      expect(finished.whereType<SendSettings>(), isEmpty);
+    });
+
+    test('最後一次 onUrlChange 變回已換上的網址，再只收到 onPageFinished → 已換上的網址與 ready 狀態不變', () {
+      final l = _loadedSelf();
+      l.appLoadStarted(Uri.parse(_ext));
+      l.urlChanged(_ext);
+      l.urlChanged(_self);
+      expect(l.pageFinished(_noContent), isEmpty);
+      expect(l.loading, isFalse);
+      expect(l.committedUrl, Uri.parse(_self));
+      expect(l.readyOnCommittedPage, isTrue);
+      expect(l.acceptsMessages, isTrue);
+    });
   });
 
   group('其他網址變化', () {

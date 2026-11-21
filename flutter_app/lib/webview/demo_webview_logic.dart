@@ -13,6 +13,9 @@
 // onPageStarted 的情況（Android 導向回 204 的網址或取消導覽時，只送一次 onPageFinished，畫面仍是原本的頁面）；
 // 主框架錯誤結束載入中，以 WebView 最後回報的網址（載入中的網址）作為已換上的網址；沒有載入中時的 onUrlChange
 // 直接更新已換上的網址，但 scheme、host 或埠不同時（網頁內換頁不可能改變這三者）視為開始載入。
+// 沒有 onPageStarted 的 onPageFinished 結束載入中時，也以 WebView 最後回報的網址為準：這次載入中收到過
+// onUrlChange 就以最後一次 onUrlChange 的網址作為已換上的網址，沒有收到過就維持原本的（onPageFinished 本身帶的
+// 網址不採用，Android 導向 204 時它帶的是 204 的網址）。
 
 import '../contract/web_contract.dart';
 import 'demo_webview_config.dart';
@@ -150,6 +153,10 @@ class DemoWebViewLogic {
   /// 這次載入收到 onPageStarted 了沒。沒有的話 onPageFinished 不算換上（見 [pageFinished]）。
   bool _pageStartedThisLoad = false;
 
+  /// 這次載入中收到 onUrlChange 了沒（包括開始這次載入的那一次）。收到過的話 [_pending] 就是最後一次
+  /// onUrlChange 回報的網址。
+  bool _urlChangedThisLoad = false;
+
   /// 已換上的那一頁送過 ready（而且被接受）了沒。換上新頁時才更新，不在開始載入時重設。
   bool _readyOnCommitted = false;
 
@@ -209,12 +216,14 @@ class DemoWebViewLogic {
     if (_loading) {
       // 轉址，或 iOS 取消載入時把網址變回原本的。
       _pending = uri;
+      _urlChangedThisLoad = true;
       return _androidTextZoom();
     }
     final committed = _committed;
     if (committed == null || uri == null || !_sameOrigin(uri, committed)) {
       // 網頁內換頁不可能改變 scheme、host、埠，所以這一定是跨文件的載入，只是 onPageStarted 還沒到。
       _startLoad(uri);
+      _urlChangedThisLoad = true;
       return _androidTextZoom();
     }
     // 網頁內換頁（pushState、錨點）：同一份文件，ready 狀態不變。
@@ -230,11 +239,16 @@ class DemoWebViewLogic {
   List<WebViewEffect> pageFinished(String url) {
     if (!_pageStartedThisLoad) {
       // 這次載入沒有 onPageStarted：Android 導向回 204 的網址、取消導覽時只送一次 onPageFinished，畫面仍是原本的
-      // 頁面。只結束載入中（包括 App 發起、還沒收到 onPageStarted 的載入），已換上的網址不變，不請網頁補送 ready、
-      // 不重算字級（Android 的 setTextZoom 在沒有 onPageStarted 的載入中本來就沒有改，見 [_androidTextZoom]）。
-      // 載入中被擋下的設定改變照常補送給原本那一頁。
+      // 頁面。onPageFinished 本身帶的網址不採用（204 時它是 204 的網址）。
       if (!_loading) return const [];
+      // 這次載入中收到過 onUrlChange（例如換了 origin 的 onUrlChange 開始的載入）：和主框架錯誤同一個原則，
+      // 以 WebView 最後回報的網址為準。
+      if (_urlChangedThisLoad) return _settleOnLastReportedUrl();
+      // 沒有收到過（App 發起、還沒收到 onPageStarted 的載入）：只結束載入中，已換上的網址不變，不請網頁補送
+      // ready、不重算字級（Android 的 setTextZoom 在沒有 onPageStarted 的載入中本來就沒有改，見
+      // [_androidTextZoom]）。載入中被擋下的設定改變照常補送給原本那一頁。
       _loading = false;
+      _urlChangedThisLoad = false;
       _pending = null;
       // 沒有新文件換上，這段期間被接受的 ready 只可能來自原本那一頁。
       _readyOnCommitted = _readyOnCommitted || _readyDuringLoad;
@@ -253,19 +267,7 @@ class DemoWebViewLogic {
   /// WebView 的主框架錯誤（載入失敗或取消）。結束載入中，以 WebView 最後回報的網址作為已換上的網址。
   List<WebViewEffect> mainFrameError() {
     if (!_loading) return const [];
-    final previous = _committed;
-    final last = _pending;
-    if (last == previous) {
-      // 換上前就失敗或被取消：網址已經變回原本的那一頁，它的 ready 狀態不變。
-      _loading = false;
-      _pending = null;
-      _readyDuringLoad = false;
-      _pageStartedThisLoad = false;
-      return [..._androidTextZoom(), ..._flushSettings()];
-    }
-    // 網址沒有變回去：畫面上是新頁面（例如換上後被 window.stop() 停止）。
-    _commit(last, readyDuringLoad: _readyDuringLoad);
-    return [..._androidTextZoom(), ..._iosTextSizeForCommitted(), ..._afterCommit()];
+    return _settleOnLastReportedUrl();
   }
 
   /// 收到通過信任判斷的 ready。送那一頁目前的設定。
@@ -302,6 +304,25 @@ class DemoWebViewLogic {
     _pending = uri;
     _readyDuringLoad = false;
     _pageStartedThisLoad = false;
+    _urlChangedThisLoad = false;
+  }
+
+  /// 結束載入中，以 WebView 最後回報的網址（載入中的網址）作為已換上的網址。呼叫端保證正在載入中。
+  /// 用在主框架錯誤，以及這次載入中收到過 onUrlChange、但沒有 onPageStarted 的 onPageFinished。
+  List<WebViewEffect> _settleOnLastReportedUrl() {
+    final last = _pending;
+    if (last == _committed) {
+      // 換上前就失敗或被取消：網址已經變回原本的那一頁，它的 ready 狀態不變。
+      _loading = false;
+      _pending = null;
+      _readyDuringLoad = false;
+      _pageStartedThisLoad = false;
+      _urlChangedThisLoad = false;
+      return [..._androidTextZoom(), ..._flushSettings()];
+    }
+    // 網址沒有變回去：畫面上是新頁面（例如換上後被 window.stop() 停止）。
+    _commit(last, readyDuringLoad: _readyDuringLoad);
+    return [..._androidTextZoom(), ..._iosTextSizeForCommitted(), ..._afterCommit()];
   }
 
   void _commit(Uri? uri, {required bool readyDuringLoad}) {
@@ -309,6 +330,7 @@ class DemoWebViewLogic {
     _pending = null;
     _loading = false;
     _pageStartedThisLoad = false;
+    _urlChangedThisLoad = false;
     _readyOnCommitted = readyDuringLoad;
     _readyDuringLoad = false;
     if (!_readyOnCommitted) _sentSnapshot = null;
