@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  僅供示範，正式專案不可照抄。
+
+  App 內建的示範網頁伺服器（http://127.0.0.1）和外部來源（例如模擬器連 http://10.0.2.2:8000）
+  都是明文 HTTP，所以這裡允許所有明文流量。不用 android:usesCleartextTraffic，
+  官方文件說它將被棄用（設計文件 §5.1）。正式專案的網頁應該來自 HTTPS 網站。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true"/>
+</network-security-config>

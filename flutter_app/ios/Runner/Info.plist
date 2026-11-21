@@ -12,6 +12,12 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<!-- App 支援的語系（設計文件 §7 C04）。 -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hant</string>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -26,6 +32,22 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!--
+	  僅供示範，正式專案不可照抄。
+	  允許明文 HTTP：App 內建的示範網頁伺服器（http://127.0.0.1）和外部來源都是 HTTP。
+	  Apple 文件對 iOS 17 以上 IP 位址的規則說法不一致，所以兩個鍵都設，要在實機確認（設計文件 §5.1）。
+	  正式專案的網頁應該來自 HTTPS 網站。
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Apple 的技術文件說 WKWebView 的流量不需要區域網路權限，加上只是保險。 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>這個示範 App 會連線到同一個區域網路上的示範網頁伺服器，載入無障礙示範網頁。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
