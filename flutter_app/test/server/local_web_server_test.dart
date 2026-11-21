@@ -184,6 +184,9 @@ void main() {
       expect(LocalWebServer.normalizePath('/shared/a11y-app.js'), 'shared/a11y-app.js');
       expect(LocalWebServer.normalizePath('/../secret'), isNull);
       expect(LocalWebServer.normalizePath('/%2e%2e/secret'), isNull);
+      // 無法解碼：%zz 不是合法的 percent-encoding；%ff 解出來不是合法的 UTF-8。
+      expect(LocalWebServer.normalizePath('/%zz'), isNull);
+      expect(LocalWebServer.normalizePath('/%ff'), isNull);
     });
 
     test('parseDelay', () {

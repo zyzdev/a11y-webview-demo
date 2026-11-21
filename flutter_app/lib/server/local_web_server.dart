@@ -179,6 +179,10 @@ class LocalWebServer {
       try {
         segment = Uri.decodeComponent(raw);
       } on ArgumentError {
+        // 不合法的 percent-encoding，例如 %zz。
+        return null;
+      } on FormatException {
+        // 解出來不是合法的 UTF-8，例如 %ff。
         return null;
       }
       if (segment.isEmpty || segment == '.' || segment == '..') return null;
