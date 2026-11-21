@@ -315,3 +315,56 @@ Task 4 的複查進行到一半時，每週 Fable 額度用完（21:00 重置）
 - Task 5：`DemoWebController` 的 setter 會立刻通知畫面重建，`DemoWebView` 不可以在 `initState` 或 build 期間設定狀態欄位。
 - Task 5：控制器沒有重設狀態的方法。切換變體重建 WebView 時，不能讓上一個變體的標題、返回狀態、載入失敗狀態留下來，也不能讓舊 WebView 晚到的回呼寫進新的狀態。
 - Task 8：計畫要 `loadUri` 記下目標網址，所以一定要改 `demo_web_controller.dart`，而這個檔案不在 Task 8 的檔案清單裡。協調者裁定允許。
+
+## Task 5：DemoWebView 與第一個完整切片（C01 字體大小）
+
+| 項目 | 內容 |
+|---|---|
+| 實作 | 全新子代理，**Opus 5.5、xhigh**（計畫原訂 Fable 5.2 xhigh，依使用者「全部改用 Opus」的決定更換）。commit `72d62ad` |
+| 審查 | 全新代理，**Opus 5.5、high**（計畫原訂 Opus 5.5 high，但實作者也是 Opus）。拿到設計文件、計畫與任務編號、commit 範圍 `a2a42b3..72d62ad`，以及下面「派工時補的決定」；沒有拿到實作者的報告；被要求以找錯為目標、在 `git archive` 匯出的複本上做，並可以在兩個模擬器上實測 |
+| 審查結論 | **規格符合：否。品質：不通過** |
+| 發現數 | 必修 2、應修 1、可之後再做 2 |
+| 狀態 | **停在這裡，等使用者決定修法。** 兩項必修的根源是計畫指定的做法在 iOS 上做不到設計文件 §6.1、§6.3 要的結果，修正需要改設計文件與計畫（交接文件規定這種情況要先回報） |
+
+### 派工時協調者補的決定
+
+| 決定 | 理由 |
+|---|---|
+| `HomePage` 的預設 `pageBuilder` 換成 `DemoPage`，刪掉暫時頁面（允許改 `home_page.dart`） | 沿用 P1 |
+| `DemoPage` 先把每個選項填成第一個值，同一個 Map 交給頁框與 `configFor` | Task 4 審查留下的事項 |
+| `DemoWebView` 不可在 `initState`、`didUpdateWidget`、build 期間設定控制器的狀態 | 同上 |
+| 切換變體、選項或顯示模式時換一個新的控制器，舊 WebView 晚到的回呼不能寫進新狀態 | 同上 |
+| 守住基準原則與朗讀原則；返回、載入與錯誤、JS 對話框、外部連結、縮放留給 Task 7、8 | 計畫 |
+| `c01-text-scale.html` 照範本頁，問題版與修正版只差 `textScale` | 基準原則 |
+| C01 的「怎麼測」依 §7 寫齊，`docs/ENVIRONMENT.md` 記下 In-app browser 與模擬器的結果 | 計畫 |
+
+### 每一項發現與處理
+
+| # | 等級 | 發現 | 協調者的查證 | 處理 |
+|---|---|---|---|---|
+| 1 | 必修 | **iOS 上信任判斷在新頁面換上之前就切換。** iOS 的 `onPageStarted`（對應 WebKit 的 `didStartProvisionalNavigation`）與 `onUrlChange` 在新頁面還沒換上時就觸發，App 立刻用新網址判斷信任。結果：不受信任的頁面導向自家網頁、而回應還沒回來的那段時間，舊頁面送的訊息被當成自家訊息處理（違反 §6.3）；反方向時，還在畫面上的自家頁面送的訊息被丟掉。Task 7 以後 `close`、`openNativeDialog`、`backState` 都走同一條路 | 讀審查者在 iOS 模擬器的紀錄屬實：外部頁面導向延遲 7 秒的自家網頁後，外部頁面送的 24 則假 `ready` 都被接受，AppBar 標題被改掉。Android 同樣情境 0 則被接受（Android 的 `onPageStarted` 在新頁面換上時才觸發）。用 `onPageStarted` 追蹤頂層網址是計畫指定的做法 | 待使用者決定 |
+| 2 | 必修 | **iOS 上「網頁負責」的自家頁面被注入 `-webkit-text-size-adjust`，字被放大兩次，而且不會清掉。** 導向外部網域一開始，策略就改成「App 負責」，放大設定被注入到還在畫面上的自家頁面；導覽沒有換成頁（204、取消、`tel:`）或按返回從 bfcache 還原時，自家頁面就停在放大兩次的狀態 | 屬實。審查者的頁面回報：自家頁面的字從 21.6px 變成 29.16px（16 × 1.35 × 1.35）。另外，計畫寫的是 iOS 在 `onPageFinished` 之後才注入，實作在 `onPageStarted` 時就注入，這一點是實作偏離計畫 | 待使用者決定（和第 1 項同一個根源） |
+| 3 | 應修 | iOS 上沒換成頁的導覽（204、取消）也會觸發 `onPageStarted`，把「這一頁送過 `ready`」重設成否；畫面上還是同一頁、不會再送 `ready`，之後字級或主題改變就不會再通知網頁。這種導覽之後也沒有 `onPageFinished`，`loading` 會停在 true（Task 8 的 A01 會用到） | 沒有 `onPageFinished` 是審查者看 log 確認的；設定不再送出是從程式推論的 | 待使用者決定（同一個根源） |
+| 4 | 可之後再做 | 自家頁面裡的跨網域 iframe 送的訊息會被接受。這和 §6.3「以頂層網址判斷」一致（外掛的訊息不帶來源 frame），但這是殘留風險 | 審查者在 iOS 實測 | 寫進 Task 12 的 `CONTRACT.md` |
+| 5 | 可之後再做 | 「只改 App」的預期沒有寫「頁面開著時改字級也會更新」 | 審查者在兩個平台看到它確實會更新 | 和修正一起補 |
+
+審查者另外指出測試的缺口：測試用的假平台不是 Android 或 iOS 的控制器，所以字級策略和網址變化的連動完全沒有測試。
+
+### 協調者自己做的查證
+
+- 讀過 `demo_webview.dart`、`platform_webview.dart`、`demo_page.dart` 全文、C01 的目錄宣告、`pubspec.yaml` 與 `docs/ENVIRONMENT.md` 的 diff。
+- 重跑 `flutter analyze`（零問題）、`flutter test`（146 個全過）、`node web/test/run.mjs`（`ALL PASS (68)`）、兩個平台的建置（都成功）；裝進兩個模擬器後啟動成功，Android 的 logcat 沒有 `FATAL EXCEPTION` 或 Flutter 錯誤。
+- 讀過審查者留下的 iOS 與 Android 紀錄，第 1、2 項的關鍵行和它的報告一致。
+
+### 審查者確認符合的部分
+
+計畫指定的 `snapshot_test` 斷言逐字都在；介面名稱與簽章和計畫一致；上表「派工時補的決定」都做到。模擬器實測（Android 字級 1.5、iOS 最大字級 1.35）：三個變體的表現符合 §7 C01；Android 修正版沒有被放大兩次；Android 導到外部網域時改用 App 負責、返回後改回網頁負責。`pubspec.yaml` 多了兩個測試用的 dev_dependencies（原本就是間接相依），審查者認為可以接受。
+
+### 驗證程度
+
+| 層級 | 內容 |
+|---|---|
+| 自動檢查通過 | 設定快照、字級策略對應表、切換變體時換新的控制器、AppBar 標題的來源、選項預設值 |
+| 在模擬器上看過 | 兩個平台：內建網頁載入（iOS 沒有被 ATS 擋）、Bridge 通了（AppBar 標題換成網頁回報的標題）、三個變體切換、大字級下三個變體的表現；iOS 的 In-app browser 開得了內建網頁 |
+| 沒確認到 | Android 的 In-app browser（模擬器的 Chrome 停在首次啟動畫面，要同意 Chrome 的服務條款，沒有代為同意） |
+| 未驗證 | 所有報讀器行為；實機上的一切；iPad 上 `-webkit-text-size-adjust` 是否有效 |
