@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:a11y_webview_demo/catalog/demo_spec.dart';
 import 'package:a11y_webview_demo/webview/demo_webview_config.dart';
 import 'package:a11y_webview_demo/widgets/demo_scaffold.dart';
@@ -190,7 +192,7 @@ void main() {
     });
   });
 
-  group('大字級版面：控制區加狀態列最多佔一半，body 至少拿到一半', () {
+  group('大字級版面：控制區加狀態列最多佔一半，body 至少拿到一半，狀態列不用捲動就看得到', () {
     const fourVariants = [
       DemoVariant('problem', '問題版', webMode: 'problem'),
       DemoVariant('web-focus', '網頁移焦點'),
@@ -198,22 +200,9 @@ void main() {
       DemoVariant('announce', 'App 用 sendAnnouncement'),
     ];
     const status = 'Flutter 在這個平台不支援 announcement，請用 liveRegion';
-    const cases = [
-      (Size(390, 844), 3.0),
-      (Size(320, 568), 3.0),
-      (Size(568, 320), 3.0),
-    ];
+    const bodyKey = Key('body');
 
-    for (final (size, scale) in cases) {
-      testWidgets('${size.width.toInt()}×${size.height.toInt()}、字級 $scale', (tester) async {
-        tester.view.devicePixelRatio = 1.0;
-        tester.view.physicalSize = size;
-        tester.platformDispatcher.textScaleFactorTestValue = scale;
-        addTearDown(tester.view.reset);
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-
-        const bodyKey = Key('body');
-        await tester.pumpWidget(MaterialApp(
+    Widget scaffold({required bool withStatus}) => MaterialApp(
           home: DemoScaffold(
             spec: _spec(variants: fourVariants),
             variant: fourVariants.first,
@@ -221,26 +210,82 @@ void main() {
             title: '頁面抵達：朗讀與焦點',
             titleIsLiveRegion: false,
             body: const SizedBox.expand(key: bodyKey),
-            statusLine: Semantics(liveRegion: true, child: const Text(status)),
+            statusLine: withStatus ? Semantics(liveRegion: true, child: const Text(status)) : null,
           ),
-        ));
-        expect(tester.takeException(), isNull);
+        );
 
-        final appBarBottom = tester.getRect(find.byType(AppBar)).bottom;
-        final bodyRect = tester.getRect(find.byKey(bodyKey));
-        final area = bodyRect.bottom - appBarBottom;
-        expect(bodyRect.height, greaterThanOrEqualTo(area / 2), reason: 'body ${bodyRect.height} / 區域 $area');
+    /// 不捲動，直接檢查：沒有例外、body 至少一半、狀態列和可視範圍有交集、語意不是 hidden 且帶 liveRegion。
+    Future<void> expectStatusVisible(WidgetTester tester, String label) async {
+      expect(tester.takeException(), isNull);
+      final appBarBottom = tester.getRect(find.byType(AppBar)).bottom;
+      final bodyRect = tester.getRect(find.byKey(bodyKey));
+      final area = bodyRect.bottom - appBarBottom;
+      expect(bodyRect.height, greaterThanOrEqualTo(area / 2), reason: '$label：body ${bodyRect.height} / 區域 $area');
 
-        // 狀態列在 body 上方，捲到看得見；而且保有自己的 liveRegion 語意。
-        final handle = tester.ensureSemantics();
-        await tester.scrollUntilVisible(find.text(status), 50, scrollable: find.byType(Scrollable).first);
-        // 字級 3.0 時這句話可能比捲動區還高，所以只要求它和捲動區（AppBar 與 body 之間）有交集。
-        final statusRect = tester.getRect(find.text(status));
-        expect(statusRect.top, lessThan(bodyRect.top));
-        expect(statusRect.bottom, greaterThan(appBarBottom));
-        expect(tester.getSemantics(find.text(status)), isSemantics(isLiveRegion: true, label: status));
-        handle.dispose();
-        expect(tester.takeException(), isNull);
+      // 可視範圍 = AppBar 與 body 之間，再和狀態列所在捲動區的範圍取交集（被捲動區裁掉的部分看不到）。
+      final statusRect = tester.getRect(find.text(status));
+      final viewport = tester.getRect(find.ancestor(of: find.text(status), matching: find.byType(Scrollable)).first);
+      final visibleTop = [statusRect.top, viewport.top, appBarBottom].reduce((a, b) => a > b ? a : b);
+      final visibleBottom = [statusRect.bottom, viewport.bottom, bodyRect.top].reduce((a, b) => a < b ? a : b);
+      final visible = visibleBottom - visibleTop;
+      expect(visible, greaterThan(0), reason: '$label：狀態列看得到的高度 $visible／${statusRect.height}');
+      // 「看得到開頭」：至少一行字（14 × 字級）的高度在可視範圍內，文字比一行短時整段都要在內。
+      final scale = MediaQuery.textScalerOf(tester.element(find.text(status))).scale(14);
+      expect(visible, greaterThanOrEqualTo(math.min(statusRect.height, scale)),
+          reason: '$label：狀態列看得到的高度 $visible，不到一行（$scale）');
+      expect(statusRect.top, lessThan(bodyRect.top));
+
+      final handle = tester.ensureSemantics();
+      await tester.pump();
+      expect(tester.getSemantics(find.text(status)), isSemantics(isLiveRegion: true, isHidden: false, label: status),
+          reason: label);
+      handle.dispose();
+      expect(tester.takeException(), isNull);
+    }
+
+    Future<void> setUpView(WidgetTester tester, Size size, double scale) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = size;
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    }
+
+    Future<void> expand(WidgetTester tester) async {
+      // 控制區的捲動區可能小到「怎麼測」在可視範圍外，先捲到它（只捲控制區，不捲狀態列）。
+      await tester.ensureVisible(find.text('怎麼測'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('怎麼測'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(_howTo.expectFixed), findsOneWidget);
+    }
+
+    const cases = [
+      (Size(390, 844), 3.0, false),
+      (Size(320, 568), 2.0, false),
+      (Size(320, 568), 3.0, false),
+      (Size(568, 320), 3.0, false),
+      (Size(320, 568), 1.0, false),
+      (Size(390, 844), 1.0, true),
+      (Size(320, 568), 1.0, true),
+    ];
+
+    for (final (size, scale, expanded) in cases) {
+      final label = '${size.width.toInt()}×${size.height.toInt()}、字級 $scale、「怎麼測」${expanded ? '展開' : '收合'}';
+      testWidgets(label, (tester) async {
+        await setUpView(tester, size, scale);
+        await tester.pumpWidget(scaffold(withStatus: true));
+        if (expanded) await expand(tester);
+        await expectStatusVisible(tester, label);
+      });
+
+      testWidgets('$label：statusLine 先是 null、重建後才出現', (tester) async {
+        await setUpView(tester, size, scale);
+        await tester.pumpWidget(scaffold(withStatus: false));
+        if (expanded) await expand(tester);
+        expect(find.text(status), findsNothing);
+        await tester.pumpWidget(scaffold(withStatus: true));
+        await expectStatusVisible(tester, '$label（後出現）');
       });
     }
   });

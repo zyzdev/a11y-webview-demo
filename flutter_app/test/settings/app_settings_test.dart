@@ -33,6 +33,11 @@ void main() {
     expect(AppSettings.parseExternalBase('10.0.2.2:1').toString(), 'http://10.0.2.2:1/');
   });
 
+  test('parseExternalBase：埠號超過 int 範圍時回傳 null，不丟例外', () {
+    expect(AppSettings.parseExternalBase('http://h:99999999999999999999/'), isNull);
+    expect(AppSettings.parseExternalBase('10.0.2.2:99999999999999999999'), isNull);
+  });
+
   test('parseExternalBase：帶查詢字串或 # 片段不合法', () {
     expect(AppSettings.parseExternalBase('http://10.0.2.2:8000/?a=1'), isNull);
     expect(AppSettings.parseExternalBase('http://10.0.2.2:8000/#top'), isNull);

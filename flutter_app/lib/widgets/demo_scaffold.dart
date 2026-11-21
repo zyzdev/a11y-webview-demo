@@ -110,32 +110,40 @@ class DemoScaffold extends StatelessWidget {
       // 不包 SafeArea：底部安全區域由各頁自己決定（C11 的「只改 App」就是用 SafeArea 包住 WebView），
       // 頁框若先包了，C11 的問題版就看不到問題（設計文件 §5.2 基準原則）。
       body: LayoutBuilder(
-        builder: (context, constraints) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 控制區和狀態列合計最多佔一半高度（扣掉分隔線），超過時在這一塊裡捲動，body 永遠至少拿到一半。
-            // 字級放大或「怎麼測」展開時才不會把 body 擠掉。狀態列放在同一個捲動區的最後，
-            // 仍在 body 上方；它的 Semantics（之後會是 liveRegion）原樣保留。
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: math.max(0, constraints.maxHeight / 2 - _dividerHeight)),
-              child: SingleChildScrollView(
+        builder: (context, constraints) {
+          // 控制區和狀態列合計最多佔一半高度（扣掉分隔線），body 永遠至少拿到一半；
+          // 字級放大或「怎麼測」展開時才不會把 body 擠掉。
+          final topMax = math.max(0.0, constraints.maxHeight / 2 - _dividerHeight);
+          final status = statusLine;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: topMax),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    controls,
-                    if (statusLine != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        child: statusLine,
+                    // 控制區拿狀態列用剩的高度，超過時在自己裡面捲動。
+                    Flexible(child: SingleChildScrollView(child: controls)),
+                    // 狀態列在控制區下方、body 正上方，不用捲動就看得到開頭（之後會是 liveRegion 的文字，
+                    // 看不到就失去意義）。最多佔這一塊的一半，太長時在自己裡面捲動；它的 Semantics 原樣保留。
+                    if (status != null)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: topMax / 2),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          child: status,
+                        ),
                       ),
                   ],
                 ),
               ),
-            ),
-            const Divider(height: _dividerHeight),
-            Expanded(child: body),
-          ],
-        ),
+              const Divider(height: _dividerHeight),
+              Expanded(child: body),
+            ],
+          );
+        },
       ),
     );
   }

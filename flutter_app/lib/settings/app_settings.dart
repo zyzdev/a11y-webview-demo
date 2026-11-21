@@ -90,7 +90,14 @@ class AppSettings extends ChangeNotifier {
     // host 解析後含 % 表示原本有空白、全形字等不能直接放在 host 的字元（Uri 會把它們 percent-encode）。
     if (uri.host.contains('%') || uri.host.contains(RegExp(r'\s'))) return null;
     // 有寫埠號時必須在 1–65535（Uri 本身接受 80000、-1 這類值）。
-    if (uri.hasPort && (uri.port < 1 || uri.port > 65535)) return null;
+    // 埠號超過 int 範圍時 Uri 到讀 port 才丟 FormatException，也當成不合法。
+    final int port;
+    try {
+      port = uri.port;
+    } on FormatException {
+      return null;
+    }
+    if (uri.hasPort && (port < 1 || port > 65535)) return null;
     if (uri.hasQuery || uri.hasFragment) return null;
     final path = uri.path.endsWith('/') ? uri.path : '${uri.path}/';
     return uri.replace(path: path);

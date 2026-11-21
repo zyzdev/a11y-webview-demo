@@ -110,4 +110,16 @@ void main() {
     expect(settings.externalBaseUrl, '');
     expect(find.text('目前載入網頁的位置：http://127.0.0.1:1234/'), findsOneWidget);
   });
+
+  testWidgets('打了埠號超過 int 範圍的網址就選「外部」：不丟例外、顯示錯誤文字、不存', (tester) async {
+    final settings = await _pumpSettingsPage(tester);
+    await tester.enterText(find.byType(TextField), 'http://h:99999999999999999999/');
+    await tester.pump();
+    await tester.tap(find.text('外部（自己架的網頁伺服器）'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('不是有效的網址'), findsOneWidget);
+    expect(settings.externalBaseUrl, '');
+    expect(settings.webSource, WebSource.external);
+  });
 }
