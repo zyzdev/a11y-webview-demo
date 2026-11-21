@@ -83,3 +83,69 @@
 - 核心不處理 `lang` 修正，由 C04 自己決定內容與 `<html lang>`。
 - `base.css` 的 `:root` 設了 `color-scheme: light`，深色主題時才切成 `dark`。Android WebView 的自動調暗會不會受影響，要在 C02 的實機測試確認。
 - 計畫 Task 1 Step 4 和 Task 12 Step 4 的預期輸出寫 `ALL PASS (24)`，現在是 68 條，之後還會增加。以「全部通過，而且計畫的 24 條逐字存在」為準。
+
+## 換電腦後的接手（2026-11-21）
+
+Task 2 起在第二台電腦上做，協調者是新的 session，依 `docs/HANDOFF.md` 接手。
+
+- **執行前掃描的裁定 P1 到 P8 全部沿用**，用到的任務會寫進派工說明。
+- **Task 0 在這台重做**（commit `846f742`，沒有可審查的產出，不送審）。接手時 Flutter 的全域設定指向一個不存在的 Android Studio，`flutter doctor` 和 `flutter create` 都失敗。使用者同意後改了兩個 Flutter 設定，細節在 `docs/ENVIRONMENT.md`。兩個平台都用拋棄式專案建置成功，Android 模擬器可以開機並執行 APK。
+- **額度門檻：** Task 2 開始前每週 Fable 額度剩 9%，低於計畫訂的 10%。使用者決定這一次放寬門檻、直接開始，模型與強度不降。
+- **這台多做的檢查：** 每個任務 commit 前，實作代理除了計畫列的驗證，還要跑 `flutter build apk --debug` 和 `flutter build ios --simulator --debug`；協調者查證時也重跑。依據是 Global Constraints 的「App 可建置」和交接文件要求的 Android 建置驗證。
+
+## Task 2：Flutter 專案與純 Dart 約定層
+
+| 項目 | 內容 |
+|---|---|
+| 實作 | 全新子代理，Opus 5.5、high。commit `6cf7c4a` |
+| 審查 | 獨立代理，Fable 5.2、high。拿到設計文件、計畫與任務編號、commit 範圍 `846f742..6cf7c4a`，以及下面「派工時補的決定」。沒有拿到實作者的報告 |
+| 審查結論 | 規格符合：是。品質：通過 |
+| 發現數 | 必修 0、應修 0、可之後再做 2 |
+| 修正與複查 | 沒有需要修正的項目，不需要複查 |
+
+### 派工時協調者補的決定
+
+| 決定 | 理由 |
+|---|---|
+| 刪掉範本的計數器後，`lib/main.dart` 留一個最小的暫時畫面 | 計畫只說刪掉計數器；Task 4 會整個改寫 `main.dart` |
+| commit 一併加入 `docs/ENVIRONMENT.md` | 沿用 P4 |
+| `ios/Podfile`、`ios/Podfile.lock` 納入版控 | 這台的 Flutter 設定關掉了 Swift Package Manager，iOS 外掛走 CocoaPods。在啟用 SPM 的電腦上建置時，Flutter 可能會自動修改 Xcode 專案，屆時再處理 |
+| 範本產生的其他檔案維持原樣 | 計畫沒有要求修改 |
+
+### 每一項發現與處理
+
+| # | 等級 | 發現 | 協調者的查證 | 處理 |
+|---|---|---|---|---|
+| 1 | 可之後再做 | `buildDemoUri` 和 `isTrustedPage` 對「base 的路徑有沒有結尾斜線」的前提不一致：`isTrustedPage` 接受沒有結尾斜線的 base，`buildDemoUri` 遇到同樣的 base 會丟掉最後一段路徑 | 屬實（`web_contract.dart` 用 `base.resolve(webPath)`）。實作者的報告也獨立提到同一點。計畫裡 base 只來自內建伺服器的 `baseUri` 和 Task 4 的 `parseExternalBase`，兩者都以 `/` 結尾，照計畫走不到這個輸入 | 程式暫不改。Task 4 的派工說明會寫明 `AppScope.webBase` 一律以 `/` 結尾；整體審查時判斷要不要在 `buildDemoUri` 裡補上 |
+| 2 | 可之後再做 | 訊息裡的字串會截到 200 字，但清單（`actions`、`caps`）的元素個數沒有上限，`actions` 是空清單也會被接受 | 屬實。計畫只規定字串截斷。訊息只在頂層網址屬於自家網域時才處理 | 留給 Task 9：實作原生對話框時決定 `actions` 個數的上下限，寫進那個任務的派工說明 |
+
+實作者的報告另外提到 `normalizeTextScale(NaN)` 會丟例外。協調者用一個暫時的測試實際執行（跑完已刪除，沒有進版控）：**不會丟例外**，NaN 和正無限大都回傳 3.0，負無限大回傳 0.8。不需要處理。
+
+### 實作時對計畫文字的詮釋（已接受）
+
+- 可省略的欄位沒帶或是 null 時用預設值；有帶但型別不對（例如 `"contract":"1"`）時，整則訊息回傳 null。
+- 200 字的截斷以 Unicode code point 計算，不會把一個字切成兩半；清單裡的每個字串也會截斷。全是表情符號的字串截斷後 `.length` 會是 400。計畫的斷言 `long.title.length == 200` 逐字通過。
+- `updateSettingsScript` 的值用 JSON 原生型別（數字、布林），和網頁端 `normalizeSettings` 的檢查方式一致。
+
+### 協調者自己做的查證
+
+- 讀過三個原始檔的全文。用腳本把計畫 Step 2 的 52 行斷言和三個測試檔比對，全部逐字存在。
+- 重跑 `flutter analyze`（零問題）、`flutter test`（28 個全過）、`node web/test/run.mjs`（`ALL PASS (68)`）。
+- 重跑 `flutter build apk --debug` 和 `flutter build ios --simulator --debug`，都成功。
+- 把建置出來的 App 裝進 Android 模擬器（`Pixel_4_API_32`）和 iOS 模擬器（iPhone 17、iOS 27.0）並啟動：兩邊行程都存在，Android 的 logcat 沒有 `FATAL EXCEPTION` 或 Flutter 錯誤。這時 App 只有一個暫時畫面，沒有 WebView。
+
+審查代理另外做的查證（摘自它的報告）：用 `git archive` 匯出 commit，在 repo 外重新建置兩個平台都成功，建置後納入版控的檔案沒有變動；把 `buildDemoUri` 產生的網址交給網頁端的 `A11yCore.parseParams` 解析，結果正確；`jsCall` 的輸出在 Node 裡執行，含引號、換行、`</script>` 的引數都正確送達；壞掉的訊息（非 JSON、型別不對、超長、極深的巢狀）都回傳 null、不丟例外；`isTrustedPage` 擋得住 `data:`、`blob:`、不同埠、`..` 路徑、`127.0.0.1:8123@evil.com` 這類網址。
+
+### 驗證程度
+
+| 層級 | 內容 |
+|---|---|
+| 自動檢查通過 | 約定層的純函式（28 個測試）；網頁自我測試 68 條；`flutter analyze` |
+| 建置與模擬器 | Android debug APK 與 iOS 模擬器 debug 建置成功；暫時畫面在兩個模擬器上啟動得起來 |
+| 未驗證 | 所有報讀器行為；`runJavaScript` 在真正的 Android WebView 與 WKWebView 上的行為（Task 5 才有 WebView）；release 與 profile 建置；實機上的一切 |
+
+### 留給後續任務的事項
+
+- Task 4：`AppScope.webBase` 一律以 `/` 結尾（上表第 1 項）。
+- Task 9：決定 `OpenNativeDialogMessage.actions` 的個數上下限（上表第 2 項）。
+- 整體審查：判斷 `buildDemoUri` 要不要自己處理沒有結尾斜線的 base。
