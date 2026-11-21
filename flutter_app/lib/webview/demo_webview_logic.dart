@@ -16,6 +16,8 @@
 // 沒有 onPageStarted 的 onPageFinished 結束載入中時，也以 WebView 最後回報的網址為準：這次載入中收到過
 // onUrlChange 就以最後一次 onUrlChange 的網址作為已換上的網址，沒有收到過就維持原本的（onPageFinished 本身帶的
 // 網址不採用，Android 導向 204 時它帶的是 204 的網址）。
+// iOS 不回報「換上」的時間點：換上後還有資源沒載完（例如很慢的圖片）的頁面在這裡仍是載入中，它再導向別處時，
+// 畫面上其實是它。所以載入中又開始新的載入時，先前的載入中網址也列入信任判斷，直到這一串載入結束。
 
 import '../contract/web_contract.dart';
 import 'demo_webview_config.dart';
@@ -157,6 +159,10 @@ class DemoWebViewLogic {
   /// onUrlChange 回報的網址。
   bool _urlChangedThisLoad = false;
 
+  /// 從上一次載入結束之後，這一串載入中出現過的每一個載入中網址（新的載入、onUrlChange，包括目前的）是不是都
+  /// 屬於自家網域。沒有載入中時開始的載入是新的一串，從 true 算起；載入中又開始新的載入時接著算，不重設。
+  bool _pendingChainTrusted = true;
+
   /// 已換上的那一頁送過 ready（而且被接受）了沒。換上新頁時才更新，不在開始載入時重設。
   bool _readyOnCommitted = false;
 
@@ -187,12 +193,14 @@ class DemoWebViewLogic {
 
   /// 目前收到的 Bridge 訊息要不要處理（§6.3 信任範圍）。
   ///
-  /// 沒有載入中：看已換上的網址。載入中：已換上與載入中的網址都要屬於自家網域，因為 iOS 換上前畫面上是舊頁面、
-  /// 換上後是新頁面，App 分不出訊息是哪一頁送的。還沒換上過任何頁面時只看載入中的網址。
+  /// 沒有載入中：看已換上的網址。載入中：已換上的網址，以及這一串載入中出現過的每一個載入中網址（包括目前的）
+  /// 都要屬於自家網域，因為 iOS 換上前畫面上是舊頁面、換上後是新頁面，App 分不出訊息是哪一頁送的；而換上後
+  /// 仍在載入中的頁面再導向別處時，畫面上是它，它的網址只留在先前的載入中網址裡。還沒換上過任何頁面時不看
+  /// 已換上的網址。
   bool get acceptsMessages {
     if (!_loading) return _isTrusted(_committed);
-    if (_committed == null) return _isTrusted(_pending);
-    return _isTrusted(_committed) && _isTrusted(_pending);
+    if (!_pendingChainTrusted) return false;
+    return _committed == null || _isTrusted(_committed);
   }
 
   // ── 事件 ───────────────────────────────────────────────────────────
@@ -216,6 +224,7 @@ class DemoWebViewLogic {
     if (_loading) {
       // 轉址，或 iOS 取消載入時把網址變回原本的。
       _pending = uri;
+      _pendingChainTrusted = _pendingChainTrusted && _isTrusted(uri);
       _urlChangedThisLoad = true;
       return _androidTextZoom();
     }
@@ -300,6 +309,8 @@ class DemoWebViewLogic {
   // ── 內部 ───────────────────────────────────────────────────────────
 
   void _startLoad(Uri? uri) {
+    // 沒有載入中時開始的是新的一串；載入中又開始新的載入時，先前的載入中網址繼續列入判斷。
+    _pendingChainTrusted = (!_loading || _pendingChainTrusted) && _isTrusted(uri);
     _loading = true;
     _pending = uri;
     _readyDuringLoad = false;

@@ -209,6 +209,24 @@ void main() {
       expect(l.acceptsMessages, isFalse);
     });
 
+    test('殘留風險（設計文件 §6.3 記下的，不是要的行為）：外部頁導向自家時被取消，錯誤先到、網址變回外部後到 → '
+        '中間那一瞬間外部頁的訊息會被當成自家的；變回外部的 onUrlChange 到了之後又被擋', () {
+      // 模擬器上量到的順序是「先變回原網址、再錯誤」，這裡是假設某個版本順序相反時的結果。這條測試只是把目前的
+      // 行為釘住：之後如果行為改變（例如修掉這個風險），要同時更新設計文件 §6.3 的殘留風險。
+      final l = _loadedSelf();
+      _navigateAndFinish(l, _evil);
+      l.pageStarted(_selfSlow);
+      l.urlChanged(_selfSlow);
+      expect(l.acceptsMessages, isFalse);
+      final effects = l.mainFrameError(); // 錯誤先到：以最後回報的網址（自家）為已換上
+      expect(l.committedUrl, Uri.parse(_selfSlow));
+      expect(l.acceptsMessages, isTrue, reason: '殘留風險：畫面上其實是外部頁');
+      expect(effects, contains(const RequestReportReady()), reason: '殘留風險：補送 ready 的請求會送到畫面上的外部頁');
+      l.urlChanged(_evil); // 變回外部的 onUrlChange 後到：換了 origin，照 fail-closed 記為載入中
+      expect(l.loading, isTrue);
+      expect(l.acceptsMessages, isFalse);
+    });
+
     test('bfcache 返回（ready 在 onPageFinished 之前、onUrlChange 在它之後）：ready 被擋，換上後請網頁補送', () {
       final l = _loadedSelf();
       _navigateAndFinish(l, _ext);
@@ -219,6 +237,94 @@ void main() {
       expect(l.urlChanged(_self), isEmpty);
       expect(l.loading, isFalse, reason: '同一個網址的 onUrlChange 不會開始新的載入');
       expect(l.acceptsMessages, isTrue);
+    });
+  });
+
+  group('一串載入（載入中又開始新的載入）：先前的載入中網址也列入信任判斷，這一串結束時清掉', () {
+    test('iOS：外部頁換上後仍在載入（慢圖片、沒有 onPageFinished）時導向自家慢速頁 → 訊息被擋；'
+        '有 onPageStarted 的 onPageFinished 換上自家頁、請網頁補送 ready、恢復接受', () {
+      final l = _loadedSelf();
+      l.pageStarted(_evil);
+      l.urlChanged(_evil);
+      expect(l.acceptsMessages, isFalse);
+      // 外部頁已換上、畫面上是它，但圖片 20 秒才回應，所以沒有 onPageFinished。3 秒後它導向自家慢速頁。
+      l.pageStarted(_selfSlow);
+      l.urlChanged(_selfSlow);
+      expect(l.committedUrl, Uri.parse(_self), reason: '外部頁沒有 onPageFinished，App 不知道它換上了');
+      expect(l.pendingUrl, Uri.parse(_selfSlow));
+      for (var i = 0; i < 28; i++) {
+        expect(l.acceptsMessages, isFalse, reason: '第 ${i + 1} 則假 ready：先前的載入中網址（外部頁）仍列入判斷');
+      }
+      final finished = l.pageFinished(_selfSlow);
+      expect(l.committedUrl, Uri.parse(_selfSlow));
+      expect(finished, contains(const RequestReportReady()));
+      expect(l.acceptsMessages, isTrue);
+      expect(l.readyAccepted(), [const SendSettings(_s1)]);
+      expect(l.readyOnCommittedPage, isTrue);
+    });
+
+    test('自家頁仍在載入時再導向另一個自家頁：訊息照常接受', () {
+      final l = _loadedSelf();
+      l.pageStarted(_selfIndex);
+      l.urlChanged(_selfIndex);
+      expect(l.acceptsMessages, isTrue);
+      l.pageStarted(_selfSlow);
+      l.urlChanged(_selfSlow);
+      expect(l.acceptsMessages, isTrue);
+      expect(l.readyAccepted(), [const SendSettings(_s1)]);
+      l.pageFinished(_selfSlow);
+      expect(l.committedUrl, Uri.parse(_selfSlow));
+      expect(l.readyOnCommittedPage, isTrue);
+      expect(l.acceptsMessages, isTrue);
+    });
+
+    test('這一串載入以錯誤結束、網址變回外部頁 → 已換上的網址是外部頁、訊息被擋', () {
+      final l = _loadedSelf();
+      l.pageStarted(_evil);
+      l.urlChanged(_evil);
+      l.pageStarted(_selfSlow);
+      l.urlChanged(_selfSlow);
+      expect(l.acceptsMessages, isFalse);
+      l.urlChanged(_evil); // 導向自家被取消，網址變回畫面上的外部頁
+      final effects = l.mainFrameError(); // -999
+      expect(l.loading, isFalse);
+      expect(l.committedUrl, Uri.parse(_evil));
+      expect(l.acceptsMessages, isFalse);
+      expect(effects, isNot(contains(const RequestReportReady())));
+    });
+
+    test('這一串載入以錯誤結束、網址變回原本的自家頁 → 先前的載入中網址清掉，恢復接受', () {
+      final l = _loadedSelf();
+      l.pageStarted(_evil);
+      l.urlChanged(_evil);
+      l.pageStarted(_selfSlow);
+      l.urlChanged(_selfSlow);
+      expect(l.acceptsMessages, isFalse);
+      l.urlChanged(_self);
+      l.mainFrameError();
+      expect(l.loading, isFalse);
+      expect(l.committedUrl, Uri.parse(_self));
+      expect(l.readyOnCommittedPage, isTrue);
+      expect(l.acceptsMessages, isTrue);
+      // 下一串載入從頭算，不帶著上一串的外部網址。
+      l.pageStarted(_selfIndex);
+      expect(l.acceptsMessages, isTrue);
+    });
+
+    test('App 發起的載入、fail-closed 開始的載入也算先前的載入中網址', () {
+      final app = _loadedSelf();
+      app.appLoadStarted(Uri.parse(_ext));
+      app.pageStarted(_selfSlow);
+      app.urlChanged(_selfSlow);
+      expect(app.acceptsMessages, isFalse, reason: 'App 發起的載入中網址（外部）');
+
+      final failClosed = _loadedSelf();
+      failClosed.urlChanged(_ext); // 換了 origin 的 onUrlChange，記為載入中
+      failClosed.pageStarted(_selfSlow);
+      failClosed.urlChanged(_selfSlow);
+      expect(failClosed.acceptsMessages, isFalse, reason: 'fail-closed 開始的載入中網址（外部）');
+      failClosed.pageFinished(_selfSlow);
+      expect(failClosed.acceptsMessages, isTrue);
     });
   });
 
