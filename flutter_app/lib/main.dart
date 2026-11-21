@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-// 暫時的最小畫面，Task 4 會整個改寫。
-void main() {
-  runApp(const A11yWebViewDemoApp());
-}
+import 'app.dart';
+import 'server/local_web_server.dart';
+import 'settings/app_settings.dart';
 
-class A11yWebViewDemoApp extends StatelessWidget {
-  const A11yWebViewDemoApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      title: 'WebView 無障礙範例',
-      home: Scaffold(
-        body: Center(child: Text('WebView 無障礙範例')),
-      ),
-    );
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final settings = await AppSettings.load(await SharedPreferences.getInstance());
+  final server = LocalWebServer(loader: rootBundleLoader());
+  String? startupError;
+  try {
+    await server.start();
+  } catch (e) {
+    // 啟動失敗仍然要顯示畫面（不能白畫面），由 A11yDemoApp 在上方說明原因。
+    startupError = '$e';
+    debugPrint('內建伺服器無法啟動：$e');
   }
+  runApp(A11yDemoApp(settings: settings, server: server, startupError: startupError));
 }

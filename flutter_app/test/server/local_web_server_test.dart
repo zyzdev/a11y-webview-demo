@@ -148,6 +148,21 @@ void main() {
       expect(again, first);
     });
 
+    // 釘住「伺服器正常時探測要成功、不可以把正常的伺服器重啟」。重啟會在同一個埠重新綁定，
+    // 所以光比對 Uri 抓不到；真正的保護在於進行中的延遲請求：伺服器若被 close(force: true)，
+    // 這個請求的連線會被切斷，拿不到 200。
+    test('ensureRunning：延遲請求進行中時呼叫，回傳同一個 Uri，延遲請求仍回 200', () async {
+      final first = await server.start();
+      final pending = _send(first.resolve('/index.html?__delay=800'));
+      // 等伺服器收下這個請求（loader 要到延遲結束後才會被呼叫，所以用時間等）。
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final again = await server.ensureRunning();
+      expect(again, first);
+      final res = await pending;
+      expect(res.status, 200);
+      expect(res.body, '<h1>home</h1>');
+    });
+
     test('ensureRunning：原埠被佔時換埠，GET / 回 200', () async {
       final first = await server.start();
       await server.debugCloseSocket();
