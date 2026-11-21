@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>RUNNING</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body data-page="test" data-fixes="">
+<script src="../shared/a11y-app.js"></script>
+<main>
+  <h1>網頁自我測試</h1>
+  <p>測試對象是 <code>shared/a11y-app.js</code> 的 <code>A11yCore</code>。結果同時寫在分頁標題（<code>PASS</code> 或 <code>FAIL</code>）。</p>
+  <pre id="result" aria-live="polite">執行中…</pre>
+</main>
+<script>
+// 瀏覽器版的執行器。和 run.mjs 一樣先定義 eq（深層比較、計數），再載入同一份 tests.js。
+var testCount = 0;
+var testFailures = [];
+
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  var keysA = Object.keys(a);
+  var keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(function (key) {
+    return Object.prototype.hasOwnProperty.call(b, key) && deepEqual(a[key], b[key]);
+  });
+}
+
+function eq(actual, expected) {
+  testCount += 1;
+  if (!deepEqual(actual, expected)) {
+    testFailures.push('FAIL: 第 ' + testCount + ' 條：預期 ' + JSON.stringify(expected) + '，實際 ' + JSON.stringify(actual));
+  }
+}
+
+// tests.js 丟出例外（例如 A11yCore 沒載入）或 tests.js 本身載入失敗時也要算失敗，
+// 不能因為一條都沒跑到就顯示成通過。
+window.addEventListener('error', function (event) {
+  var target = event.target;
+  if (target !== window && !(target && target.tagName === 'SCRIPT')) return;
+  testFailures.push('FAIL: 測試在第 ' + testCount + ' 條之後中斷：' + (event.message || '腳本載入失敗'));
+}, true);
+</script>
+<script src="tests.js"></script>
+<script>
+var failed = testFailures.length > 0;
+document.getElementById('result').textContent = failed ? testFailures.join('\n') : 'ALL PASS (' + testCount + ')';
+document.title = failed ? 'FAIL' : 'PASS';
+</script>
+</body>
+</html>

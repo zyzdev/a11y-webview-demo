@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>共用內容頁</title>
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<!--
+  共用內容頁：A04、A05、B01–B05、T02 共用，也是其他示範頁的骨架範本
+  （骨架約定寫在 shared/a11y-app.js 的檔頭）。
+  這一頁沒有要示範的網頁端修正，所以 data-fixes 是空的，問題版和修正版完全一樣。
+-->
+<body data-page="b-content" data-fixes="">
+<script src="../shared/a11y-app.js"></script>
+
+<header class="site-header">
+  <p class="site-name">WebView 無障礙範例網站</p>
+  <a class="site-back" href="../index.html">回上一頁</a>
+  <h1>共用內容頁</h1>
+</header>
+
+<main>
+  <h2>這一頁有什麼</h2>
+  <p>這是一份寫法單純、語意正確的一般網頁，給好幾個示範共用。頁面本身沒有要示範的問題，要觀察的是它被放進 App 的 WebView 之後，報讀器在 App 和網頁的交界處怎麼運作。</p>
+  <p>由上到下依序是：三個頁內連結、兩個按鈕和一則狀態訊息、一篇分成幾段的長文，最後是一個表單。</p>
+  <ul>
+    <li><a href="#buttons">跳到「按鈕與狀態訊息」</a></li>
+    <li><a href="#long-text">跳到「長篇文字」</a></li>
+    <li><a href="#form">跳到「表單」</a></li>
+  </ul>
+
+  <h2 id="buttons">按鈕與狀態訊息</h2>
+  <p>按「更新狀態訊息」會改寫下面那一則狀態訊息。它是 <code>aria-live</code> 區域，內容改變時焦點不會移動。</p>
+  <div class="button-row">
+    <button type="button" id="update-status">更新狀態訊息</button>
+    <button type="button" id="toggle-note" aria-expanded="false" aria-controls="note">補充說明</button>
+  </div>
+  <p id="note" hidden>這段文字平常是收起來的。「補充說明」按鈕用 <code>aria-expanded</code> 表示目前是展開還是收合，按鈕上的文字不會變。</p>
+  <p id="live-status" class="status" aria-live="polite">尚未更新</p>
+
+  <h2 id="long-text">長篇文字</h2>
+  <p class="muted">以下是示範用的文字，用來測試捲動和連續朗讀，內容本身沒有特別的意義。</p>
+
+  <h3>早晨的市場</h3>
+  <p>第一段。天剛亮，市場口的早餐店已經排了一小段隊伍。老闆娘一手翻蛋餅，一手把豆漿裝進袋子，嘴上還能跟熟客聊昨天的球賽。隔壁賣菜的阿伯把剛到的高麗菜一顆一顆疊好，水珠沿著葉子滑下來，在水泥地上留下一圈一圈深色的印子。</p>
+  <p>第二段。再往裡面走，魚攤的碎冰發出細細的聲音，攤子上的燈泡把魚鱗照得發亮。有人提著菜籃慢慢逛，有人拿著手機對照家人傳來的清單，一樣一樣確認。走道不寬，兩個人錯身的時候，都會很自然地側一下肩膀。</p>
+
+  <h3>午後的巷子</h3>
+  <p>第三段。過了中午，市場的鐵門一道一道拉下來，巷子安靜了許多。轉角的雜貨店門口擺著兩張塑膠椅，椅子上通常坐著同一位老先生和同一隻橘色的貓。老先生看報紙，貓看路過的人，兩邊都不太理會對方，卻每天準時出現。</p>
+  <p>第四段。巷子底有一間小小的修鞋舖，招牌上的字已經褪色，但是工作檯上的工具排得整整齊齊。師傅說，一雙鞋穿久了會記得主人走路的樣子，所以修的時候不能只看壞掉的地方，還要看整雙鞋是怎麼磨的。</p>
+
+  <h3>傍晚的河堤</h3>
+  <p>第五段。太陽快下山的時候，河堤上的人慢慢多起來。有人跑步，有人牽著狗，也有人只是靠在欄杆上看水面的顏色一點一點變深。遠處的橋亮起一排燈，倒映在河裡，被風吹成一段一段。</p>
+  <p>第六段。等到天色完全暗下來，河堤邊的路燈接手把步道照亮。跑步的人換了一批，腳步聲還是差不多的節奏。這一天就這樣結束，明天早上市場口的早餐店又會排起隊伍。</p>
+
+  <h2 id="form">表單</h2>
+  <p>這個表單沒有送出按鈕，只用來觀察輸入框取得焦點和輸入文字時的情況。</p>
+  <form id="demo-form">
+    <div class="field">
+      <label for="note-title">標題（單行輸入框）</label>
+      <input type="text" id="note-title" name="title">
+    </div>
+    <div class="field">
+      <label for="note-body">內容（多行輸入框）</label>
+      <textarea id="note-body" name="body" rows="4"></textarea>
+    </div>
+  </form>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // 不移動焦點的狀態變化：寫進 aria-live 區域，由報讀器自己念出來（設計文件 §6.4）。
+  var status = document.getElementById('live-status');
+  document.getElementById('update-status').addEventListener('click', function () {
+    status.textContent = '已更新 ' + new Date().toLocaleTimeString();
+  });
+
+  // 展開和收合的狀態放在按鈕自己的 aria-expanded 上，不另外用 aria-live 念一次。
+  var toggle = document.getElementById('toggle-note');
+  var note = document.getElementById('note');
+  toggle.addEventListener('click', function () {
+    var expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    note.hidden = expanded;
+  });
+
+  // 這個表單不送出。要攔下來是因為在單行輸入框按 Enter 仍會觸發送出，
+  // 頁面重新載入後，App 帶在網址上的參數就不見了。
+  document.getElementById('demo-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+  });
+})();
+</script>
+</body>
+</html>
