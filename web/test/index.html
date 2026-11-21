@@ -48,6 +48,10 @@ window.addEventListener('error', function (event) {
 </script>
 <script src="tests.js"></script>
 <script>
+// 一條斷言都沒跑到不能算通過：tests.js 變成空檔或沒有呼叫 eq 時，要明確失敗。
+if (testFailures.length === 0 && testCount === 0) {
+  testFailures.push('FAIL: 沒有執行任何斷言（tests.js 是空的，或裡面沒有呼叫 eq）');
+}
 var failed = testFailures.length > 0;
 document.getElementById('result').textContent = failed ? testFailures.join('\n') : 'ALL PASS (' + testCount + ')';
 document.title = failed ? 'FAIL' : 'PASS';

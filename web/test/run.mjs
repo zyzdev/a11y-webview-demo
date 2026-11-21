@@ -36,5 +36,10 @@ try {
   failures.push(`FAIL: 測試在第 ${count} 條之後中斷：${error && error.message ? error.message : error}`);
 }
 
+// 一條斷言都沒跑到不能算通過：tests.js 變成空檔或沒有呼叫 eq 時，要明確失敗。
+if (failures.length === 0 && count === 0) {
+  failures.push('FAIL: 沒有執行任何斷言（tests.js 是空的，或裡面沒有呼叫 eq）');
+}
+
 console.log(failures.length > 0 ? failures.join('\n') : `ALL PASS (${count})`);
 process.exitCode = failures.length > 0 ? 1 : 0;
