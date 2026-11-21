@@ -55,8 +55,12 @@ class DemoWebController extends ChangeNotifier {
   void _set<T>(T old, T value, void Function() assign, {bool? equal}) {
     if (equal ?? old == value) return;
     assign();
-    notifyListeners();
+    // dispose 之後仍可能有晚到的 WebView 回呼（例如載入中就離開頁面）。照常賦值但不通知，
+    // 否則 ChangeNotifier 在 debug 版會丟斷言。
+    if (!_disposed) notifyListeners();
   }
+
+  bool _disposed = false;
 
   final StreamController<BridgeMessage> _messages = StreamController<BridgeMessage>.broadcast();
 
@@ -93,6 +97,7 @@ class DemoWebController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _messages.close();
     _controller = null;
     super.dispose();

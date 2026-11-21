@@ -68,4 +68,21 @@ void main() {
     await tester.pump();
     expect(settings.themeMode, ThemeMode.dark);
   });
+
+  testWidgets('離開輸入框（沒按完成鍵）：檢查並存成正規化的網址，但不改寫使用者打的字', (tester) async {
+    final settings = await _pumpSettingsPage(tester);
+    await tester.enterText(find.byType(TextField), '10.0.2.2:8000');
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    expect(settings.externalBaseUrl, 'http://10.0.2.2:8000/');
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '10.0.2.2:8000');
+
+    await tester.enterText(find.byType(TextField), 'ftp://x');
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    expect(find.textContaining('不是有效的網址'), findsOneWidget);
+    expect(settings.externalBaseUrl, 'http://10.0.2.2:8000/');
+  });
 }

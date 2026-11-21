@@ -97,4 +97,32 @@ void main() {
     expect(find.textContaining('內建伺服器無法啟動'), findsOneWidget);
     expect(find.textContaining('SocketException: boom'), findsOneWidget);
   });
+
+  testWidgets('A11yDemoApp：回到前景時 ensureRunning，說明消失，webBase 換成伺服器的網址', (tester) async {
+    final settings = await AppSettings.load(await SharedPreferences.getInstance());
+    final server = LocalWebServer(loader: (_) async => null);
+    await tester.pumpWidget(A11yDemoApp(settings: settings, server: server, startupError: 'SocketException: boom'));
+    expect(find.textContaining('內建伺服器無法啟動'), findsOneWidget);
+    expect(AppScope.of(tester.element(find.byType(HomePage))).webBase.toString(), 'http://127.0.0.1/');
+
+    // ensureRunning 是真的 socket IO，要在 runAsync 裡觸發並等它完成。
+    await tester.runAsync(() async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      for (var i = 0; i < 200 && server.baseUri == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+    try {
+      expect(server.baseUri, isNotNull);
+      expect(find.textContaining('內建伺服器無法啟動'), findsNothing);
+      final webBase = AppScope.of(tester.element(find.byType(HomePage))).webBase;
+      expect(webBase, server.baseUri);
+      expect(webBase.path, endsWith('/'));
+    } finally {
+      await tester.runAsync(server.stop);
+    }
+  });
 }

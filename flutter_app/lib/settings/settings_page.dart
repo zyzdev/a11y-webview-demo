@@ -21,9 +21,10 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    // 離開輸入框時也確認一次，不必一定按鍵盤的完成鍵。
+    // 離開輸入框時也確認一次，不必一定按鍵盤的完成鍵。這時不改寫輸入框的文字：
+    // 失焦不一定是使用者打完了，改寫會打斷還沒打完的網址。
     _urlFocus.addListener(() {
-      if (!_urlFocus.hasFocus) _commitUrl();
+      if (!_urlFocus.hasFocus) _commitUrl(rewriteField: false);
     });
   }
 
@@ -45,7 +46,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// 在送出或離開輸入框時才檢查，不在每打一個字時檢查：打到一半的網址一定不合法，
   /// 錯誤訊息一直出現又消失，報讀器使用者會被反覆打斷。
-  void _commitUrl() {
+  ///
+  /// 合法時存成正規化後的網址；[rewriteField] 為 true（按了完成鍵）時，輸入框也改成正規化後的網址。
+  void _commitUrl({required bool rewriteField}) {
     if (!mounted) return;
     final settings = AppScope.of(context).settings;
     final text = _url.text.trim();
@@ -62,7 +65,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final normalized = parsed.toString();
     setState(() {
       _urlError = null;
-      _url.text = normalized;
+      if (rewriteField) _url.text = normalized;
     });
     if (settings.externalBaseUrl != normalized) settings.setExternalBaseUrl(normalized);
   }
@@ -99,7 +102,7 @@ class _SettingsPageState extends State<SettingsPage> {
               keyboardType: TextInputType.url,
               textInputAction: TextInputAction.done,
               autocorrect: false,
-              onSubmitted: (_) => _commitUrl(),
+              onSubmitted: (_) => _commitUrl(rewriteField: true),
               decoration: InputDecoration(
                 labelText: '外部網址',
                 hintText: 'http://10.0.2.2:8000/',

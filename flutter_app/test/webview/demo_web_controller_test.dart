@@ -39,6 +39,17 @@ void main() {
     web.dispose();
   });
 
+  test('dispose 之後改狀態、送訊息都不丟例外（晚到的 WebView 回呼）', () {
+    final web = DemoWebController();
+    web.dispose();
+    web.loading = true;
+    web.webTitle = '晚到';
+    web.webCaps = const ['textScale'];
+    web.addMessage(const CloseMessage());
+    expect(web.loading, true);
+    expect(web.webTitle, '晚到');
+  });
+
   test('addMessage 送進 messages', () async {
     final web = DemoWebController();
     final received = <BridgeMessage>[];
